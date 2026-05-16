@@ -486,8 +486,8 @@ function Get-EffectiveLocale {
   if ($ConfigLanguage -and $ConfigLanguage -ne 'auto' -and $ConfigLanguage -in $script:SupportedLocales) {
     return $ConfigLanguage
   }
-  # auto-detect: OS UI culture → exact match
-  $sys = $PSCulture
+  # auto-detect: OS UI culture (PSUICulture > PSCulture — UI 字串該跟 UI lang 走,不是 thread culture)
+  $sys = $PSUICulture
   if ($sys -in $script:SupportedLocales) { return $sys }
   # parent-locale fallback (e.g. en-US/en-GB → en, zh-HK → zh-CN, zh-MO → zh-CN)
   $base = ($sys -split '-')[0]

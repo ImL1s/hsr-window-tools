@@ -67,6 +67,15 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\WindowPatcher\WindowPatcher-WPF.
 - Install-Autostart.bat registers a `onlogon HIGHEST` scheduled task so the tray relaunches itself after every Windows login.
 - Install-StartMenu.bat creates a Start Menu + Desktop `.lnk` (with the `.lnk` admin-elevation flag set, byte `0x15 |= 0x20`) so users can launch WindowPatcher from `Win + search` or the desktop with one UAC prompt. Best-effort attempts to pin to the taskbar; Win11 22H2+ usually blocks this, so the script prints a one-step manual fallback (right-click → 釘選到工作列).
 
+### Localization (i18n)
+
+5 locales supported: **zh-TW** (canonical) · **en** · **zh-CN** · **ja** · **ko**.
+
+- Resource files: `WindowPatcher\i18n\<locale>\strings.psd1` (PowerShell standard `Import-LocalizedData` format)
+- Switch via tray right-click → **Language / 語言** ▸ Auto / 繁體中文 / English / 简体中文 / 日本語 / 한국어 → restart prompt
+- `config.json.language = 'auto'` (default): detect `$PSCulture` → exact match → parent-locale match (e.g. `zh-HK` → `zh-CN`, `en-AU` → `en`) → fallback `en`
+- Adding a 6th locale: add `WindowPatcher\i18n\<locale>\strings.psd1` (75 keys, same set as `zh-TW`), append to `$script:SupportedLocales` + tray menu `$langOpts`. Pester contract test enforces key-parity across all locales.
+
 ### FPS note (2026-05 真實測試確認)
 
 End-to-end test on a live StarRail (PID 35188) verified: HSR **still uses** the single
@@ -207,6 +216,15 @@ FPS tweak 預設不啟用 (`fpsProfile = "none"`, `fpsTarget = 0`) 是為了避�
 | `Install-Watcher.bat` / `Uninstall-Watcher.bat` | 舊版排程 watcher 安裝/移除 |
 | `Install-Autostart.bat` / `Uninstall-Autostart.bat` | 開機自啟動 (schtasks onlogon HIGHEST) |
 | `Install-StartMenu.bat` / `Uninstall-StartMenu.bat` | Start Menu + 桌面捷徑 (`.lnk` byte 0x15 admin flag,Win 搜尋即見) |
+| `WindowPatcher/i18n/<locale>/strings.psd1` | 多語系字串檔 (zh-TW canonical / en / zh-CN / ja / ko,75 keys 對齊) |
+
+### 多語系 (i18n)
+
+支援 5 種語言: **zh-TW** (canonical) · **en** · **zh-CN** · **ja** · **ko**。
+
+- 切換方式: tray 右鍵 → **語言 / Language** ▸ 選擇 → 提示重啟生效
+- `config.json.language = 'auto'` (預設): 偵測 `$PSCulture` → 完全 match → 父語系 match (`zh-HK` → `zh-CN`、`en-AU` → `en`) → fallback `en`
+- 加第 6 種語系: 新增 `WindowPatcher\i18n\<locale>\strings.psd1` (75 keys,跟 zh-TW canonical 同集合),加到 `$script:SupportedLocales` + tray `$langOpts`。Pester contract test 強制 key parity
 | `WindowPatcher/RegProbe.ps1` | FPS key 探查用 registry diff helper |
 | `WindowPatcher/FPS-Wizard.ps1` | CLI 版 FPS 探查精靈 wrapper |
 

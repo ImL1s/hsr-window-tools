@@ -384,7 +384,7 @@ Describe "i18n localization framework (5 locales)" {
       if ($ConfigLanguage -and $ConfigLanguage -ne 'auto' -and $ConfigLanguage -in $supported) {
         return $ConfigLanguage
       }
-      $sys = $PSCulture
+      $sys = $PSUICulture
       if ($sys -in $supported) { return $sys }
       $base = ($sys -split '-')[0]
       $match = $supported | Where-Object { ($_ -split '-')[0] -eq $base } | Select-Object -First 1
