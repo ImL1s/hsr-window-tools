@@ -396,8 +396,10 @@ function Load-Config {
     try {
       $raw = Get-Content $script:ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
       # 已知 processName -> profile 對應(Migration 用)
-      # 註: HSR 從 mapping 移除,避免對 Version=10 新 schema 寫 ghost key
-      #     原神/絕區零等遊戲 PC 版可能仍鎖 60,故保留 mapping
+      # 註: HSR 從 mapping 移除是預設策略 (避免初次使用者看到「鍵尚未生成」噪音);
+      #     2026-05 真實測試確認 HSR 仍用 GraphicsSettings_Model_h2986158309,
+      #     使用者進設定動一次後 wizard 即可 patch FPS。
+      #     原神/絕區零等其他遊戲類似機制,故保留 mapping
       $autoProfileMap = @{
         'GenshinImpact'         = 'unity_cognosphere_genshin'
         'YuanShen'              = 'unity_miHoYo_genshin'
@@ -1575,7 +1577,7 @@ $menu.Items.Add("立即掃描修補").add_Click({
   $script:Tray.ShowBalloonTip(2000, "視窗修補器", "已修補 $($r.style) 個視窗、$($r.fps) 個 FPS 設定", 'Info')
 })
 $menu.Items.Add("管理目標...").add_Click({ Show-SettingsWPF })
-$menu.Items.Add("FPS 探查精靈 (HSR 找新 schema key)...").add_Click({ Start-FpsWizard -TargetFPS 120 -Path 'HKCU:\Software\Cognosphere\Star Rail' })
+$menu.Items.Add("FPS 探查精靈 (HSR 解鎖到 120 FPS)...").add_Click({ Start-FpsWizard -TargetFPS 120 -Path 'HKCU:\Software\Cognosphere\Star Rail' })
 $menu.Items.Add('-') | Out-Null
 $menu.Items.Add("開啟 log").add_Click({ Start-Process notepad.exe $script:LogPath })
 $menu.Items.Add("開啟設定資料夾").add_Click({ Start-Process explorer.exe $script:ConfigDir })

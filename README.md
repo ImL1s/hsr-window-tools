@@ -124,11 +124,19 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\WindowPatcher\WindowPatcher-WPF.
 .\APPLY-PATCH.bat
 ```
 
-### FPS 說明
+### FPS 說明 (2026-05 真實測試確認)
 
-本工具的主要可靠功能是 **視窗 style 修補**。HSR Version=10 不再使用舊版單一 `GraphicsSettings_Model_h*` JSON binary key 來保存圖形設定；仍寫舊 key 的公開 FPS unlock 工具可能只是建立遊戲不讀的 ghost key。
+對活 HSR (PID 35188) 端到端測試確認:HSR **仍使用** 單一 `GraphicsSettings_Model_h2986158309` JSON binary key (DJB2 hash 演算法已驗證 5/5 命中)。先前看不到此 key 純粹是因為使用者**從未開過遊戲內畫面設定**,只要進設定隨便動一個選項 + ESC,HSR 就會把完整 JSON blob (含 `"FPS":N`) 寫入 registry,wizard 立刻能 diff + patch 為 120。
 
-因此，本 repo 的 FPS 功能目前定位為探查輔助，且 HSR 預設不啟用 (`fpsProfile = "none"`, `fpsTarget = 0`)。只有當你明確想研究目前 registry schema 時，才建議使用托盤選單的 **FPS 探查精靈** 或 `WindowPatcher\RegProbe.ps1`。
+**從零到 120 FPS 完整流程 (已驗證 work)**:
+1. 啟動 tray (`WindowPatcher\WindowPatcher.bat`) — tray 自動提權並 watch 遊戲 process
+2. 啟動 HSR — tray 約 2 秒內注入 `WS_THICKFRAME + WS_MAXIMIZEBOX`
+3. (一次性 FPS 準備) HSR 內: ESC → 設定 → 畫面 → 切換 FPS / 任意選項 → ESC 離開
+4. 右下角托盤 → 右鍵 → **FPS 探查精靈** → 確定建基線
+5. 此基線之後,wizard 會 watch HSR 退出;之後在 HSR 內動任意設定再 ESC,wizard 自動 diff + patch
+6. 重啟 HSR — registry 已含 `{"FPS":120,...}`,遊戲讀到後即生效
+
+FPS tweak 預設不啟用 (`fpsProfile = "none"`, `fpsTarget = 0`) 是為了避免「找不到 key」噪音 — 透過托盤選單的 **FPS 探查精靈** 或 `WindowPatcher\RegProbe.ps1` 主動開啟即可。
 
 ### 主要檔案
 
