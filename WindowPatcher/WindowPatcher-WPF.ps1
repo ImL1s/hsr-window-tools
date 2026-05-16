@@ -3,6 +3,10 @@
 
 $ErrorActionPreference = 'Stop'
 
+# 共用常數 (CLI + GUI + Wizard 共用,strict 版本:JSON field 帶引號避免誤匹配 substring)
+$script:FPS_PATTERN = '"FPS"|"fps"|"TargetFrameRate"|"MaxFPS"|"FrameRate"'
+$script:COMMON_FPS_VALUES = @(30, 60, 120, 144)
+
 # === CLI 模式 (在自動提權之前處理, 不需 admin) ===
 if ($args.Count -gt 0) {
   $cmd = $args[0]
@@ -187,17 +191,17 @@ if ($args.Count -gt 0) {
       $cands = @()
       foreach ($k in $added) {
         $info = $current[$k]
-        if ($info.type -eq 'binary' -and $info.text -match '"FPS"|"fps"|"TargetFrameRate"|"MaxFPS"|"FrameRate"') {
+        if ($info.type -eq 'binary' -and $info.text -match $script:FPS_PATTERN) {
           $cands += @{key=$k;isBinary=$true}
-        } elseif (($info.type -in @('Int32','UInt32')) -and ([int]$info.value -in @(30,60,120,144))) {
+        } elseif (($info.type -in @('Int32','UInt32')) -and ([int]$info.value -in $script:COMMON_FPS_VALUES)) {
           $cands += @{key=$k;isBinary=$false}
         }
       }
       foreach ($c in $changed) {
         $info = $current[$c.key]
-        if ($info.type -eq 'binary' -and $info.text -match '"FPS"|"fps"|"TargetFrameRate"|"MaxFPS"|"FrameRate"') {
+        if ($info.type -eq 'binary' -and $info.text -match $script:FPS_PATTERN) {
           $cands += @{key=$c.key;isBinary=$true}
-        } elseif (($info.type -in @('Int32','UInt32')) -and ([int]$info.value -in @(30,60,120,144)) -and ([int]$c.before.value -in @(30,60,120,144))) {
+        } elseif (($info.type -in @('Int32','UInt32')) -and ([int]$info.value -in $script:COMMON_FPS_VALUES) -and ([int]$c.before.value -in $script:COMMON_FPS_VALUES)) {
           $cands += @{key=$c.key;isBinary=$false}
         }
       }
@@ -634,101 +638,122 @@ function Test-WizardDiffHasFps {
   # 純函式: 比對 baseline 與 current snapshot,回傳是否有 binary key 含 FPS 字串的新增/變更
   # 抽出來方便 Pester unit test
   param([hashtable]$Baseline, [hashtable]$Current)
-  $fpsPattern = '"FPS"|"fps"|TargetFrameRate|MaxFPS|FrameRate'
   foreach ($k in $Current.Keys) {
     $info = $Current[$k]
     if ($info.type -ne 'binary') { continue }
     if (-not $Baseline.ContainsKey($k)) {
-      if ($info.text -match $fpsPattern) { return $true }
+      if ($info.text -match $script:FPS_PATTERN) { return $true }
     } elseif ($Baseline[$k].type -eq 'binary' -and $info.bytes_hex -ne $Baseline[$k].bytes_hex) {
-      if ($info.text -match $fpsPattern) { return $true }
+      if ($info.text -match $script:FPS_PATTERN) { return $true }
     }
   }
   return $false
 }
 
-function Run-FpsWizardDiff {
-  param([int]$TargetFPS, [string]$Path)
-  $current = Snapshot-Reg $Path
+function Get-WizardDiff {
+  # 純函式:比對 baseline vs current,挑出新增/變更/FPS 候選 (Pester 可測,GUI/Snapshot 解耦)
+  param([hashtable]$Baseline, [hashtable]$Current)
   $added = @(); $changed = @()
-  foreach ($k in $current.Keys) {
-    if (-not $script:WizardBaseline.ContainsKey($k)) {
+  foreach ($k in $Current.Keys) {
+    if (-not $Baseline.ContainsKey($k)) {
       $added += $k
-    } elseif ($current[$k].type -eq 'binary') {
-      if ($current[$k].bytes_hex -ne $script:WizardBaseline[$k].bytes_hex) {
-        $changed += @{ key=$k; before=$script:WizardBaseline[$k]; after=$current[$k] }
+    } elseif ($Current[$k].type -eq 'binary') {
+      if ($Current[$k].bytes_hex -ne $Baseline[$k].bytes_hex) {
+        $changed += @{ key=$k; before=$Baseline[$k]; after=$Current[$k] }
       }
-    } elseif ($current[$k].value -ne $script:WizardBaseline[$k].value) {
-      $changed += @{ key=$k; before=$script:WizardBaseline[$k]; after=$current[$k] }
+    } elseif ($Current[$k].value -ne $Baseline[$k].value) {
+      $changed += @{ key=$k; before=$Baseline[$k]; after=$Current[$k] }
     }
   }
   $candidates = @()
   foreach ($k in $added) {
-    $info = $current[$k]
-    if ($info.type -eq 'binary' -and $info.text -match '"FPS"|"fps"|"TargetFrameRate"|"MaxFPS"|"FrameRate"') {
+    $info = $Current[$k]
+    if ($info.type -eq 'binary' -and $info.text -match $script:FPS_PATTERN) {
       $candidates += @{ key=$k; isBinary=$true }
-    } elseif (($info.type -in @('Int32','UInt32')) -and ([int]$info.value -in @(30,60,120,144))) {
+    } elseif (($info.type -in @('Int32','UInt32')) -and ([int]$info.value -in $script:COMMON_FPS_VALUES)) {
       $candidates += @{ key=$k; isBinary=$false }
     }
   }
   foreach ($c in $changed) {
-    $info = $current[$c.key]
-    if ($info.type -eq 'binary' -and $info.text -match '"FPS"|"fps"|"TargetFrameRate"|"MaxFPS"|"FrameRate"') {
+    $info = $Current[$c.key]
+    if ($info.type -eq 'binary' -and $info.text -match $script:FPS_PATTERN) {
       $candidates += @{ key=$c.key; isBinary=$true }
-    } elseif (($info.type -in @('Int32','UInt32')) -and ([int]$info.value -in @(30,60,120,144)) -and ([int]$c.before.value -in @(30,60,120,144))) {
+    } elseif (($info.type -in @('Int32','UInt32')) -and ([int]$info.value -in $script:COMMON_FPS_VALUES) -and ([int]$c.before.value -in $script:COMMON_FPS_VALUES)) {
       $candidates += @{ key=$c.key; isBinary=$false }
     }
   }
+  return @{ added = $added; changed = $changed; candidates = $candidates }
+}
 
+function Build-WizardSummary {
+  # 純函式:把 diff 結構轉成使用者看的 dialog 字串
+  param([hashtable]$Diff, [int]$TargetFPS)
+  $added = $Diff.added; $changed = $Diff.changed; $candidates = $Diff.candidates
   $summary = "本次掃描結果`n  新增 key: $($added.Count)`n  變更 key: $($changed.Count)`n`n"
   if ($candidates.Count -gt 0) {
     $summary += "★ 找到 $($candidates.Count) 個 FPS 候選:`n"
     foreach ($c in $candidates) { $summary += "    $($c.key)`n" }
     $summary += "`n是否現在寫入 $TargetFPS FPS patch?"
+  } else {
+    $summary += "沒找到明顯 FPS 候選。可能:`n  • 等 2-3 秒讓 HSR flush registry 後再試`n  • FPS 設定不在此 path`n`n變更 keys (前 5):`n"
+    foreach ($c in ($changed | Select-Object -First 5)) { $summary += "  ~ $($c.key)`n" }
+    foreach ($k in ($added | Select-Object -First 5)) { $summary += "  + $k`n" }
+  }
+  return $summary
+}
+
+function Prompt-EnableGuard {
+  # Patch 成功後的二步 opt-in:是否啟動持續守護 (改 config + dialog)
+  param([int]$TargetFPS)
+  $needsEnable = $false
+  foreach ($t in $script:Config.targets) {
+    if ($t.processName -eq 'StarRail' -and ($t.fpsTarget -lt $TargetFPS -or $t.fpsProfile -eq 'none')) {
+      $needsEnable = $true; break
+    }
+  }
+  if (-not $needsEnable) { return }
+  $guardMsg = "已 patch FPS=$TargetFPS。`n`n是否啟動「持續守護」?`n`n" +
+              "是 = 之後 HSR 動其他設定若把 FPS 寫回 30/60,工具會 2 秒內 re-patch 回 $TargetFPS`n" +
+              "否 = 只 patch 這一次,使用者後續手動調整 FPS 不被覆寫`n`n" +
+              "之後可從 tray 右鍵選單「持續守護: 啟動/停止」隨時切換。"
+  $g = [System.Windows.MessageBox]::Show($guardMsg, "啟動持續守護?", 'YesNo', 'Question')
+  if ($g -eq 'Yes') {
+    foreach ($t in $script:Config.targets) {
+      if ($t.processName -eq 'StarRail') {
+        $t.fpsTarget = $TargetFPS
+        $t.fpsProfile = 'unity_cognosphere_starrail'
+      }
+    }
+    Save-Config $script:Config
+    Add-Activity "★ 已啟動持續守護 (fpsTarget=$TargetFPS) — 可從 tray menu 隨時停止"
+    [System.Windows.MessageBox]::Show("持續守護已啟動。`n`n停止方法:右下角托盤右鍵 → 持續守護:停止", "守護已啟動", 'OK', 'Information') | Out-Null
+  } else {
+    Add-Activity "Wizard: 使用者選擇只 patch 一次,不啟動持續守護"
+  }
+}
+
+function Run-FpsWizardDiff {
+  # Orchestration:Get-WizardDiff → Build-WizardSummary → dialog → Apply → Prompt-EnableGuard
+  param([int]$TargetFPS, [string]$Path)
+  $current = Snapshot-Reg $Path
+  $diff = Get-WizardDiff -Baseline $script:WizardBaseline -Current $current
+  $summary = Build-WizardSummary -Diff $diff -TargetFPS $TargetFPS
+
+  if ($diff.candidates.Count -gt 0) {
     $r = [System.Windows.MessageBox]::Show($summary, "FPS Wizard 結果", 'YesNo', 'Question')
     if ($r -eq 'Yes') {
-      $patched = Apply-FpsCandidates -Candidates $candidates -TargetFPS $TargetFPS -Path $Path
+      $patched = Apply-FpsCandidates -Candidates $diff.candidates -TargetFPS $TargetFPS -Path $Path
       Add-Activity "FPS Wizard: 已 patch $patched 個 key → $TargetFPS"
       if ($script:Tray) { $script:Tray.ShowBalloonTip(4000, "FPS 已寫入", "patched $patched 個 key → $TargetFPS FPS", 'Info') }
-
-      # Patch 成功才問是否啟動持續守護 (使用者明確 opt-in,可隨時從 tray menu 停止)
       if ($patched -gt 0) {
-        $needsEnable = $false
-        foreach ($t in $script:Config.targets) {
-          if ($t.processName -eq 'StarRail' -and ($t.fpsTarget -lt $TargetFPS -or $t.fpsProfile -eq 'none')) {
-            $needsEnable = $true; break
-          }
-        }
-        if ($needsEnable) {
-          $guardMsg = "已 patch FPS=$TargetFPS。`n`n是否啟動「持續守護」?`n`n" +
-                      "是 = 之後 HSR 動其他設定若把 FPS 寫回 30/60,工具會 2 秒內 re-patch 回 $TargetFPS`n" +
-                      "否 = 只 patch 這一次,使用者後續手動調整 FPS 不被覆寫`n`n" +
-                      "之後可從 tray 右鍵選單「持續守護: 啟動/停止」隨時切換。"
-          $g = [System.Windows.MessageBox]::Show($guardMsg, "啟動持續守護?", 'YesNo', 'Question')
-          if ($g -eq 'Yes') {
-            foreach ($t in $script:Config.targets) {
-              if ($t.processName -eq 'StarRail') {
-                $t.fpsTarget = $TargetFPS
-                $t.fpsProfile = 'unity_cognosphere_starrail'
-              }
-            }
-            Save-Config $script:Config
-            Add-Activity "★ 已啟動持續守護 (fpsTarget=$TargetFPS) — 可從 tray menu 隨時停止"
-            [System.Windows.MessageBox]::Show("持續守護已啟動。`n`n停止方法:右下角托盤右鍵 → 持續守護:停止", "守護已啟動", 'OK', 'Information') | Out-Null
-          } else {
-            Add-Activity "Wizard: 使用者選擇只 patch 一次,不啟動持續守護"
-          }
-        }
+        Prompt-EnableGuard -TargetFPS $TargetFPS
       } else {
         Add-Activity "Wizard: Apply-FpsCandidates 回傳 0 patched, 不啟用守護"
         [System.Windows.MessageBox]::Show("沒成功 patch 任何 key (Apply-FpsCandidates 回傳 0)`n`n可能原因: registry binary 無法寫入,或 FPS pattern 未匹配", "Wizard 部分失敗", 'OK', 'Warning') | Out-Null
       }
     }
   } else {
-    $summary += "沒找到明顯 FPS 候選。可能:`n  • 等 2-3 秒讓 HSR flush registry 後再試`n  • FPS 設定不在此 path`n`n變更 keys (前 5):`n"
-    foreach ($c in ($changed | Select-Object -First 5)) { $summary += "  ~ $($c.key)`n" }
-    foreach ($k in ($added | Select-Object -First 5)) { $summary += "  + $k`n" }
-    Add-Activity "FPS Wizard: 沒找到 FPS 候選 (新增 $($added.Count), 變更 $($changed.Count))"
+    Add-Activity "FPS Wizard: 沒找到 FPS 候選 (新增 $($diff.added.Count), 變更 $($diff.changed.Count))"
     [System.Windows.MessageBox]::Show($summary, "FPS Wizard 無結果", 'OK', 'Warning') | Out-Null
   }
   $script:WizardBaseline = $null

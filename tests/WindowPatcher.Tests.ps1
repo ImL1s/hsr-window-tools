@@ -78,9 +78,10 @@ Describe "Test-WizardDiffHasFps polling 邏輯" {
   BeforeAll {
     # NOTE: 雙份 source 已知 trade-off — 主檔不能 dot-source (有 mutex + auto-elevate + GUI 啟動).
     # 改善: 下方 'main + test 函式 source 同步' contract test 偵測漂移
+    # 跟主檔同步:strict pattern (JSON field 帶引號)
+    $fpsPattern = '"FPS"|"fps"|"TargetFrameRate"|"MaxFPS"|"FrameRate"'
     function Test-WizardDiffHasFps {
       param([hashtable]$Baseline, [hashtable]$Current)
-      $fpsPattern = '"FPS"|"fps"|TargetFrameRate|MaxFPS|FrameRate'
       foreach ($k in $Current.Keys) {
         $info = $Current[$k]
         if ($info.type -ne 'binary') { continue }
@@ -94,14 +95,14 @@ Describe "Test-WizardDiffHasFps polling 邏輯" {
     }
   }
 
-  It "[Contract] 主檔的 Test-WizardDiffHasFps 內容跟 test 一致 (偵測 double-source 漂移)" {
+  It "[Contract] 主檔 \$script:FPS_PATTERN 跟 test inline pattern 同步 (偵測 drift)" {
     $mainContent = Get-Content $script:Main -Raw
-    # 抽出主檔 Test-WizardDiffHasFps 函式 body (從 'function Test-WizardDiffHasFps' 到下一個 'function ' 或 '\n}' 結尾)
+    # 主檔必須有 strict $script:FPS_PATTERN 宣告 (抽常數後的單一 source of truth)
+    $mainContent | Should -Match '\$script:FPS_PATTERN\s*=\s*''"FPS"\|"fps"\|"TargetFrameRate"\|"MaxFPS"\|"FrameRate"'''
+    # Test-WizardDiffHasFps 函式必須引用 $script:FPS_PATTERN (不能 hard-code 重複)
     if ($mainContent -match '(?ms)function Test-WizardDiffHasFps \{(.*?)^\}') {
       $mainBody = $matches[1]
-      # 核心 regex pattern 必須一致
-      $mainBody | Should -Match '"FPS"\|"fps"\|TargetFrameRate\|MaxFPS\|FrameRate'
-      # 結構檢查: 主檔該函式必須有 binary type filter
+      $mainBody | Should -Match '\$script:FPS_PATTERN'
       $mainBody | Should -Match 'type -ne ''binary'''
     } else {
       throw "主檔找不到 Test-WizardDiffHasFps 函式 (可能被刪/改名)"
@@ -157,6 +158,135 @@ Describe "Test-WizardDiffHasFps polling 邏輯" {
       'NoiseKey_h2' = @{ type='binary'; text='{"y":2}'; bytes_hex='CC' }
     }
     Test-WizardDiffHasFps -Baseline $baseline -Current $current | Should -Be $true
+  }
+}
+
+Describe "Get-WizardDiff (純函式 — 拆 Run-FpsWizardDiff 後可測)" {
+  BeforeAll {
+    # Inline copy 跟主檔同步 — contract test 偵測 drift
+    $script:FPS_PATTERN = '"FPS"|"fps"|"TargetFrameRate"|"MaxFPS"|"FrameRate"'
+    $script:COMMON_FPS_VALUES = @(30, 60, 120, 144)
+    function Get-WizardDiff {
+      param([hashtable]$Baseline, [hashtable]$Current)
+      $added = @(); $changed = @()
+      foreach ($k in $Current.Keys) {
+        if (-not $Baseline.ContainsKey($k)) {
+          $added += $k
+        } elseif ($Current[$k].type -eq 'binary') {
+          if ($Current[$k].bytes_hex -ne $Baseline[$k].bytes_hex) {
+            $changed += @{ key=$k; before=$Baseline[$k]; after=$Current[$k] }
+          }
+        } elseif ($Current[$k].value -ne $Baseline[$k].value) {
+          $changed += @{ key=$k; before=$Baseline[$k]; after=$Current[$k] }
+        }
+      }
+      $candidates = @()
+      foreach ($k in $added) {
+        $info = $Current[$k]
+        if ($info.type -eq 'binary' -and $info.text -match $script:FPS_PATTERN) {
+          $candidates += @{ key=$k; isBinary=$true }
+        } elseif (($info.type -in @('Int32','UInt32')) -and ([int]$info.value -in $script:COMMON_FPS_VALUES)) {
+          $candidates += @{ key=$k; isBinary=$false }
+        }
+      }
+      foreach ($c in $changed) {
+        $info = $Current[$c.key]
+        if ($info.type -eq 'binary' -and $info.text -match $script:FPS_PATTERN) {
+          $candidates += @{ key=$c.key; isBinary=$true }
+        } elseif (($info.type -in @('Int32','UInt32')) -and ([int]$info.value -in $script:COMMON_FPS_VALUES) -and ([int]$c.before.value -in $script:COMMON_FPS_VALUES)) {
+          $candidates += @{ key=$c.key; isBinary=$false }
+        }
+      }
+      return @{ added = $added; changed = $changed; candidates = $candidates }
+    }
+  }
+
+  It "[Contract] 主檔有 Get-WizardDiff 且引用 \$script:FPS_PATTERN + \$script:COMMON_FPS_VALUES" {
+    $main = Get-Content $script:Main -Raw
+    $main | Should -Match '(?ms)function Get-WizardDiff \{'
+    if ($main -match '(?ms)function Get-WizardDiff \{(.*?)^\}') {
+      $matches[1] | Should -Match '\$script:FPS_PATTERN'
+      $matches[1] | Should -Match '\$script:COMMON_FPS_VALUES'
+    }
+  }
+
+  It "新增 binary 含 FPS → candidates 1 個 isBinary=true" {
+    $b = @{}
+    $c = @{ 'K1' = @{ type='binary'; text='{"FPS":60}'; bytes_hex='AA' } }
+    $d = Get-WizardDiff -Baseline $b -Current $c
+    $d.added.Count | Should -Be 1
+    $d.candidates.Count | Should -Be 1
+    $d.candidates[0].isBinary | Should -Be $true
+  }
+
+  It "變更 binary FPS:60→120 → changed 1 個 candidates 1 個" {
+    $b = @{ 'K1' = @{ type='binary'; text='{"FPS":60}'; bytes_hex='AA' } }
+    $c = @{ 'K1' = @{ type='binary'; text='{"FPS":120}'; bytes_hex='BB' } }
+    $d = Get-WizardDiff -Baseline $b -Current $c
+    $d.changed.Count | Should -Be 1
+    $d.candidates.Count | Should -Be 1
+  }
+
+  It "Int32 in COMMON_FPS_VALUES 新增 → candidates isBinary=false" {
+    $b = @{}
+    $c = @{ 'K1' = @{ type='Int32'; value='60' } }
+    $d = Get-WizardDiff -Baseline $b -Current $c
+    $d.candidates.Count | Should -Be 1
+    $d.candidates[0].isBinary | Should -Be $false
+  }
+
+  It "Int32=999 (不在 COMMON_FPS_VALUES) → added 1 但不算候選" {
+    $b = @{}
+    $c = @{ 'K1' = @{ type='Int32'; value='999' } }
+    $d = Get-WizardDiff -Baseline $b -Current $c
+    $d.added.Count | Should -Be 1
+    $d.candidates.Count | Should -Be 0
+  }
+
+  It "baseline=current → 全 0" {
+    $s = @{ 'K1' = @{ type='binary'; text='{"FPS":60}'; bytes_hex='AA' } }
+    $d = Get-WizardDiff -Baseline $s -Current $s
+    $d.added.Count | Should -Be 0
+    $d.changed.Count | Should -Be 0
+    $d.candidates.Count | Should -Be 0
+  }
+}
+
+Describe "Build-WizardSummary (純函式)" {
+  BeforeAll {
+    function Build-WizardSummary {
+      param([hashtable]$Diff, [int]$TargetFPS)
+      $added = $Diff.added; $changed = $Diff.changed; $candidates = $Diff.candidates
+      $summary = "本次掃描結果`n  新增 key: $($added.Count)`n  變更 key: $($changed.Count)`n`n"
+      if ($candidates.Count -gt 0) {
+        $summary += "★ 找到 $($candidates.Count) 個 FPS 候選:`n"
+        foreach ($c in $candidates) { $summary += "    $($c.key)`n" }
+        $summary += "`n是否現在寫入 $TargetFPS FPS patch?"
+      } else {
+        $summary += "沒找到明顯 FPS 候選。可能:`n  • 等 2-3 秒讓 HSR flush registry 後再試`n  • FPS 設定不在此 path`n`n變更 keys (前 5):`n"
+        foreach ($c in ($changed | Select-Object -First 5)) { $summary += "  ~ $($c.key)`n" }
+        foreach ($k in ($added | Select-Object -First 5)) { $summary += "  + $k`n" }
+      }
+      return $summary
+    }
+  }
+
+  It "[Contract] 主檔有 Build-WizardSummary 函式" {
+    $main = Get-Content $script:Main -Raw
+    $main | Should -Match '(?ms)function Build-WizardSummary \{'
+  }
+
+  It "candidates>0 → '★ 找到 N 個 FPS 候選' + TargetFPS" {
+    $diff = @{ added=@('K1','K2'); changed=@(); candidates=@(@{ key='K1' }) }
+    $s = Build-WizardSummary -Diff $diff -TargetFPS 120
+    $s | Should -Match '★ 找到 1 個 FPS 候選'
+    $s | Should -Match '寫入 120 FPS'
+  }
+
+  It "candidates=0 → '沒找到明顯 FPS 候選'" {
+    $diff = @{ added=@(); changed=@(); candidates=@() }
+    $s = Build-WizardSummary -Diff $diff -TargetFPS 120
+    $s | Should -Match '沒找到明顯 FPS 候選'
   }
 }
 
