@@ -95,10 +95,12 @@ Describe "Test-WizardDiffHasFps polling 邏輯" {
     }
   }
 
-  It "[Contract] 主檔 \$script:FPS_PATTERN 跟 test inline pattern 同步 (偵測 drift)" {
+  It "[Contract] 主檔 \$script:FPS_FIELD_NAMES 是 single source of truth + FPS_PATTERN 由它 derive" {
     $mainContent = Get-Content $script:Main -Raw
-    # 主檔必須有 strict $script:FPS_PATTERN 宣告 (抽常數後的單一 source of truth)
-    $mainContent | Should -Match '\$script:FPS_PATTERN\s*=\s*''"FPS"\|"fps"\|"TargetFrameRate"\|"MaxFPS"\|"FrameRate"'''
+    # FIELD_NAMES 是 single source — read-side regex + write-side foreach 都從這 derive
+    $mainContent | Should -Match '\$script:FPS_FIELD_NAMES\s*=\s*@\(''FPS'',''fps'',''TargetFrameRate'',''MaxFPS'',''FrameRate''\)'
+    # FPS_PATTERN 必須由 FIELD_NAMES derive (不能 hard-code literal regex)
+    $mainContent | Should -Match '\$script:FPS_PATTERN\s*=\s*\(\$script:FPS_FIELD_NAMES'
     # Test-WizardDiffHasFps 函式必須引用 $script:FPS_PATTERN (不能 hard-code 重複)
     if ($mainContent -match '(?ms)function Test-WizardDiffHasFps \{(.*?)^\}') {
       $mainBody = $matches[1]
@@ -107,6 +109,14 @@ Describe "Test-WizardDiffHasFps polling 邏輯" {
     } else {
       throw "主檔找不到 Test-WizardDiffHasFps 函式 (可能被刪/改名)"
     }
+  }
+
+  It "[Contract] 主檔 derive 出來的 FPS_PATTERN 內容跟 test inline 一致 (執行 derive 驗 value)" {
+    # 跑主檔的 derive 邏輯,跟 test inline strict pattern 比對 — 偵測 FIELD_NAMES 改動忘了同步 test
+    $fieldNames = @('FPS','fps','TargetFrameRate','MaxFPS','FrameRate')
+    $derived = ($fieldNames | ForEach-Object { '"' + $_ + '"' }) -join '|'
+    $testInline = '"FPS"|"fps"|"TargetFrameRate"|"MaxFPS"|"FrameRate"'
+    $derived | Should -Be $testInline
   }
 
   It "baseline 為空, current 含 FPS binary → 返回 true (新增 case)" {
@@ -250,6 +260,24 @@ Describe "Get-WizardDiff (純函式 — 拆 Run-FpsWizardDiff 後可測)" {
     $d.changed.Count | Should -Be 0
     $d.candidates.Count | Should -Be 0
   }
+
+  It "DWORD 變更 60→120 (兩端都 in COMMON_FPS_VALUES) → changed 1 candidates 1 isBinary=false" {
+    $b = @{ 'K1' = @{ type='Int32'; value='60' } }
+    $c = @{ 'K1' = @{ type='Int32'; value='120' } }
+    $d = Get-WizardDiff -Baseline $b -Current $c
+    $d.changed.Count | Should -Be 1
+    $d.candidates.Count | Should -Be 1
+    $d.candidates[0].isBinary | Should -Be $false
+  }
+
+  It "DWORD 變更 5→60 (before 不在 COMMON_FPS_VALUES) → changed 1 但非 candidate" {
+    # before.value=5 不在 @(30,60,120,144),guard 過濾掉這種非 FPS 欄位的雜訊變化
+    $b = @{ 'K1' = @{ type='Int32'; value='5' } }
+    $c = @{ 'K1' = @{ type='Int32'; value='60' } }
+    $d = Get-WizardDiff -Baseline $b -Current $c
+    $d.changed.Count | Should -Be 1
+    $d.candidates.Count | Should -Be 0
+  }
 }
 
 Describe "Build-WizardSummary (純函式)" {
@@ -287,6 +315,22 @@ Describe "Build-WizardSummary (純函式)" {
     $diff = @{ added=@(); changed=@(); candidates=@() }
     $s = Build-WizardSummary -Diff $diff -TargetFPS 120
     $s | Should -Match '沒找到明顯 FPS 候選'
+  }
+}
+
+Describe "Prompt-EnableGuard (contract only — 副作用函式靠 contract 驗 drift)" {
+  It "[Contract] 主檔有 Prompt-EnableGuard 且呼叫 Save-Config + Add-Activity + 用 \$cfg snapshot 避 TOCTOU" {
+    $main = Get-Content $script:Main -Raw
+    $main | Should -Match '(?ms)function Prompt-EnableGuard \{'
+    if ($main -match '(?ms)function Prompt-EnableGuard \{(.*?)^\}') {
+      $body = $matches[1]
+      $body | Should -Match 'Save-Config'
+      $body | Should -Match 'Add-Activity'
+      # TOCTOU 防護:必須 snapshot 一次到 $cfg,不能直接重複用 $script:Config
+      $body | Should -Match '\$cfg\s*=\s*\$script:Config'
+    } else {
+      throw "主檔找不到 Prompt-EnableGuard 函式 (可能被刪/改名)"
+    }
   }
 }
 

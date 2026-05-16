@@ -3,8 +3,11 @@
 
 $ErrorActionPreference = 'Stop'
 
-# 共用常數 (CLI + GUI + Wizard 共用,strict 版本:JSON field 帶引號避免誤匹配 substring)
-$script:FPS_PATTERN = '"FPS"|"fps"|"TargetFrameRate"|"MaxFPS"|"FrameRate"'
+# 共用常數 (CLI + GUI + Wizard 共用)
+# FPS_FIELD_NAMES = single source of truth (read-side regex + write-side foreach 都從這個 derive)
+# FPS_PATTERN = strict regex (JSON field 帶引號) — 避免誤匹配 substring,HSR registry binary 一定是 JSON
+$script:FPS_FIELD_NAMES = @('FPS','fps','TargetFrameRate','MaxFPS','FrameRate')
+$script:FPS_PATTERN = ($script:FPS_FIELD_NAMES | ForEach-Object { '"' + $_ + '"' }) -join '|'
 $script:COMMON_FPS_VALUES = @(30, 60, 120, 144)
 
 # === CLI 模式 (在自動提權之前處理, 不需 admin) ===
@@ -222,7 +225,7 @@ if ($args.Count -gt 0) {
             $bytes = (Get-ItemProperty $regPath -Name $c.key).$($c.key)
             $text = [System.Text.Encoding]::UTF8.GetString($bytes).TrimEnd([char]0)
             $newText = $text
-            foreach ($f in @('FPS','fps','TargetFrameRate','MaxFPS','FrameRate')) {
+            foreach ($f in $script:FPS_FIELD_NAMES) {
               $pat = '"' + $f + '"\s*:\s*\d+'
               $rep = '"' + $f + '":' + $targetFps
               $newText = [regex]::Replace($newText, $pat, $rep)
@@ -608,7 +611,7 @@ function Apply-FpsCandidates {
         $bytes = (Get-ItemProperty $Path -Name $c.key).$($c.key)
         $text = [System.Text.Encoding]::UTF8.GetString($bytes).TrimEnd([char]0)
         $newText = $text
-        foreach ($f in @('FPS','fps','TargetFrameRate','MaxFPS','FrameRate')) {
+        foreach ($f in $script:FPS_FIELD_NAMES) {
           $pat = '"' + $f + '"\s*:\s*\d+'
           $rep = '"' + $f + '":' + $TargetFPS
           $newText = [regex]::Replace($newText, $pat, $rep)
@@ -704,9 +707,11 @@ function Build-WizardSummary {
 
 function Prompt-EnableGuard {
   # Patch 成功後的二步 opt-in:是否啟動持續守護 (改 config + dialog)
+  # TOCTOU 安全:snapshot $cfg 一次,避免 modal dialog pumping dispatcher 期間 Settings 視窗 Save 改 $script:Config
   param([int]$TargetFPS)
+  $cfg = $script:Config
   $needsEnable = $false
-  foreach ($t in $script:Config.targets) {
+  foreach ($t in $cfg.targets) {
     if ($t.processName -eq 'StarRail' -and ($t.fpsTarget -lt $TargetFPS -or $t.fpsProfile -eq 'none')) {
       $needsEnable = $true; break
     }
@@ -718,13 +723,13 @@ function Prompt-EnableGuard {
               "之後可從 tray 右鍵選單「持續守護: 啟動/停止」隨時切換。"
   $g = [System.Windows.MessageBox]::Show($guardMsg, "啟動持續守護?", 'YesNo', 'Question')
   if ($g -eq 'Yes') {
-    foreach ($t in $script:Config.targets) {
+    foreach ($t in $cfg.targets) {
       if ($t.processName -eq 'StarRail') {
         $t.fpsTarget = $TargetFPS
         $t.fpsProfile = 'unity_cognosphere_starrail'
       }
     }
-    Save-Config $script:Config
+    Save-Config $cfg
     Add-Activity "★ 已啟動持續守護 (fpsTarget=$TargetFPS) — 可從 tray menu 隨時停止"
     [System.Windows.MessageBox]::Show("持續守護已啟動。`n`n停止方法:右下角托盤右鍵 → 持續守護:停止", "守護已啟動", 'OK', 'Information') | Out-Null
   } else {
