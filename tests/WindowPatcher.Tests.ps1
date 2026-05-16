@@ -369,3 +369,89 @@ Describe "Wizard end-to-end (dummy registry)" {
     $afterText | Should -Match '"FPS"\s*:\s*120'
   }
 }
+
+Describe "i18n localization framework (5 locales)" {
+  BeforeAll {
+    $script:I18nRoot = Join-Path $script:Root 'WindowPatcher\i18n'
+    $script:I18nLocales = @('zh-TW','en','zh-CN','ja','ko')
+
+    # Inline copy 跟主檔同步 — contract test 偵測 drift
+    function Get-EffectiveLocale {
+      param([string]$ConfigLanguage)
+      $supported = @('zh-TW','en','zh-CN','ja','ko')
+      if ($ConfigLanguage -and $ConfigLanguage -ne 'auto' -and $ConfigLanguage -in $supported) {
+        return $ConfigLanguage
+      }
+      $sys = $PSCulture
+      if ($sys -in $supported) { return $sys }
+      $base = ($sys -split '-')[0]
+      $match = $supported | Where-Object { ($_ -split '-')[0] -eq $base } | Select-Object -First 1
+      if ($match) { return $match }
+      return 'en'
+    }
+  }
+
+  It "All 5 strings.psd1 exist and parse without errors" {
+    foreach ($loc in $script:I18nLocales) {
+      $p = Join-Path $script:I18nRoot "$loc\strings.psd1"
+      Test-Path $p | Should -Be $true -Because "$loc/strings.psd1 must exist"
+      $errors = $null; $tokens = $null
+      [System.Management.Automation.Language.Parser]::ParseFile($p, [ref]$tokens, [ref]$errors) | Out-Null
+      $errors.Count | Should -Be 0 -Because "$loc parses cleanly"
+    }
+  }
+
+  It "[Contract] Key parity — 4 個 locale 的 key 集合都跟 zh-TW canonical 完全一致" {
+    $canonical = (Import-PowerShellDataFile (Join-Path $script:I18nRoot 'zh-TW\strings.psd1')).Keys | Sort-Object
+    $canonical.Count | Should -BeGreaterThan 50 -Because "至少 50+ keys (Commit A: ~62)"
+    foreach ($loc in $script:I18nLocales | Where-Object { $_ -ne 'zh-TW' }) {
+      $keys = (Import-PowerShellDataFile (Join-Path $script:I18nRoot "$loc\strings.psd1")).Keys | Sort-Object
+      $missing = @($canonical | Where-Object { $_ -notin $keys })
+      $extra   = @($keys | Where-Object { $_ -notin $canonical })
+      $missing.Count | Should -Be 0 -Because "$loc 缺 keys: $($missing -join ', ')"
+      $extra.Count | Should -Be 0 -Because "$loc 多 keys: $($extra -join ', ')"
+    }
+  }
+
+  It "[Contract] 主檔有 Get-EffectiveLocale + Load-Lang + \$script:SupportedLocales" {
+    $main = Get-Content $script:Main -Raw
+    $main | Should -Match '(?ms)function Get-EffectiveLocale \{'
+    $main | Should -Match '(?ms)function Load-Lang \{'
+    $main | Should -Match '\$script:SupportedLocales\s*=\s*@\(''zh-TW'',''en'',''zh-CN'',''ja'',''ko''\)'
+    # config.json 必須有 language 欄位 (Get-DefaultConfig)
+    $main | Should -Match 'language\s*=\s*''auto'''
+  }
+
+  It "Get-EffectiveLocale: explicit valid locale → 該 locale" {
+    Get-EffectiveLocale -ConfigLanguage 'zh-TW' | Should -Be 'zh-TW'
+    Get-EffectiveLocale -ConfigLanguage 'en'    | Should -Be 'en'
+    Get-EffectiveLocale -ConfigLanguage 'zh-CN' | Should -Be 'zh-CN'
+    Get-EffectiveLocale -ConfigLanguage 'ja'    | Should -Be 'ja'
+    Get-EffectiveLocale -ConfigLanguage 'ko'    | Should -Be 'ko'
+  }
+
+  It "Get-EffectiveLocale: 'auto' → 跑 OS-detect 路徑,結果是 supported 之一" {
+    $r = Get-EffectiveLocale -ConfigLanguage 'auto'
+    $r | Should -BeIn $script:I18nLocales
+  }
+
+  It "Get-EffectiveLocale: invalid explicit value → fallback 也在 supported" {
+    $r = Get-EffectiveLocale -ConfigLanguage 'invalid-xyz'
+    $r | Should -BeIn $script:I18nLocales
+  }
+
+  It "Get-EffectiveLocale: 空字串 → fallback (走 auto 路徑)" {
+    $r = Get-EffectiveLocale -ConfigLanguage ''
+    $r | Should -BeIn $script:I18nLocales
+  }
+
+  It "Load 真實 psd1 內容 — zh-TW + en 已知 key 值正確" {
+    $tw = Import-PowerShellDataFile (Join-Path $script:I18nRoot 'zh-TW\strings.psd1')
+    $tw.tray_title    | Should -Be '視窗修補器'
+    $tw.tray_menu_exit | Should -Be '結束'
+
+    $en = Import-PowerShellDataFile (Join-Path $script:I18nRoot 'en\strings.psd1')
+    $en.tray_title    | Should -Be 'WindowPatcher'
+    $en.tray_menu_exit | Should -Be 'Exit'
+  }
+}

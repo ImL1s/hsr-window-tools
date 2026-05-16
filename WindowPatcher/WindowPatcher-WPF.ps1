@@ -395,6 +395,7 @@ function Get-DefaultConfig {
     )
     scanIntervalSec = 2
     showNotifications = $true
+    language = 'auto'  # auto | zh-TW | en | zh-CN | ja | ko
   }
 }
 
@@ -417,6 +418,7 @@ function Load-Config {
         targets = @()
         scanIntervalSec = Clamp-ScanInterval $(if($null -ne $raw.scanIntervalSec -and $raw.scanIntervalSec -ne 5){$raw.scanIntervalSec}else{2})
         showNotifications = $(if($null -ne $raw.showNotifications){[bool]$raw.showNotifications}else{$true})
+        language = $(if($raw.language){[string]$raw.language}else{'auto'})
       }
       $migrated = $false
       foreach ($t in $raw.targets) {
@@ -474,6 +476,37 @@ function Save-Config {
 $script:Config = Load-Config
 $script:PatchedHandles = @{}
 $script:FpsPatchedKeys = @{}
+
+# === i18n 載入 (config.language='auto' → $PSCulture → fallback en) ===
+$script:I18nDir = Join-Path $PSScriptRoot 'i18n'
+$script:SupportedLocales = @('zh-TW','en','zh-CN','ja','ko')
+
+function Get-EffectiveLocale {
+  param([string]$ConfigLanguage)
+  if ($ConfigLanguage -and $ConfigLanguage -ne 'auto' -and $ConfigLanguage -in $script:SupportedLocales) {
+    return $ConfigLanguage
+  }
+  # auto-detect: OS UI culture → exact match
+  $sys = $PSCulture
+  if ($sys -in $script:SupportedLocales) { return $sys }
+  # parent-locale fallback (e.g. en-US/en-GB → en, zh-HK → zh-CN, zh-MO → zh-CN)
+  $base = ($sys -split '-')[0]
+  $match = $script:SupportedLocales | Where-Object { ($_ -split '-')[0] -eq $base } | Select-Object -First 1
+  if ($match) { return $match }
+  return 'en'  # final fallback
+}
+
+function Load-Lang {
+  param([string]$Locale)
+  $p = Join-Path $script:I18nDir "$Locale\strings.psd1"
+  if (Test-Path $p) { return Import-PowerShellDataFile $p }
+  # final fallback if locale file missing
+  return Import-PowerShellDataFile (Join-Path $script:I18nDir 'en\strings.psd1')
+}
+
+$script:EffectiveLocale = Get-EffectiveLocale -ConfigLanguage $script:Config.language
+$script:Lang = Load-Lang -Locale $script:EffectiveLocale
+Log "i18n: config.language=$($script:Config.language) effective=$script:EffectiveLocale keys=$($script:Lang.Count)"
 
 # === Style patch ===
 function Mask-Of {
@@ -1740,6 +1773,37 @@ $menu.Items.Add($itemGuard) | Out-Null
 $menu.Items.Add('-') | Out-Null
 $menu.Items.Add("開啟 log").add_Click({ Start-Process notepad.exe $script:LogPath })
 $menu.Items.Add("開啟設定資料夾").add_Click({ Start-Process explorer.exe $script:ConfigDir })
+
+# === Language submenu (i18n) ===
+$itemLang = New-Object System.Windows.Forms.ToolStripMenuItem $script:Lang.tray_menu_language
+$langOpts = [ordered]@{
+  'auto'  = 'Auto / 自動'
+  'zh-TW' = '繁體中文'
+  'en'    = 'English'
+  'zh-CN' = '简体中文'
+  'ja'    = '日本語'
+  'ko'    = '한국어'
+}
+foreach ($kv in $langOpts.GetEnumerator()) {
+  $loc = $kv.Key
+  $label = $kv.Value
+  $sub = New-Object System.Windows.Forms.ToolStripMenuItem $label
+  $sub.Checked = ($script:Config.language -eq $loc)
+  $sub.add_Click({
+    $script:Config.language = $loc
+    Save-Config $script:Config
+    $body = $script:Lang.lang_restart_body -f $label
+    $r = [System.Windows.Forms.MessageBox]::Show($body, $script:Lang.lang_restart_title, 'YesNo', 'Information')
+    if ($r -eq 'Yes') {
+      Start-Process pwsh.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+      $script:Tray.Visible = $false; $script:Tray.Dispose()
+      [System.Windows.Application]::Current.Shutdown()
+    }
+  }.GetNewClosure())
+  $itemLang.DropDownItems.Add($sub) | Out-Null
+}
+$menu.Items.Add($itemLang) | Out-Null
+
 $menu.Items.Add('-') | Out-Null
 $menu.Items.Add("結束").add_Click({
   $script:Tray.Visible = $false; $script:Tray.Dispose()
