@@ -1716,11 +1716,11 @@ $menu = New-Object System.Windows.Forms.ContextMenuStrip
 $menu.RenderMode = 'System'
 $menu.Font = New-Object System.Drawing.Font('Segoe UI Variable Text', 9)
 
-$itemTitle = New-Object System.Windows.Forms.ToolStripLabel("視窗修補器")
+$itemTitle = New-Object System.Windows.Forms.ToolStripLabel($script:Lang.tray_title)
 $itemTitle.Font = New-Object System.Drawing.Font('Segoe UI Variable Display Semib', 10)
 $itemTitle.ForeColor = [System.Drawing.Color]::FromArgb(17,24,39)
 $menu.Items.Add($itemTitle) | Out-Null
-$itemStatus = New-Object System.Windows.Forms.ToolStripLabel("狀態  啟動中")
+$itemStatus = New-Object System.Windows.Forms.ToolStripLabel($script:Lang.tray_status_waiting)
 $itemStatus.ForeColor = [System.Drawing.Color]::FromArgb(107,114,128)
 $menu.Items.Add($itemStatus) | Out-Null
 $menu.Items.Add('-') | Out-Null
@@ -1785,6 +1785,9 @@ foreach ($kv in $langOpts.GetEnumerator()) {
     $body = $script:Lang.lang_restart_body -f $label
     $r = [System.Windows.Forms.MessageBox]::Show($body, $script:Lang.lang_restart_title, 'YesNo', 'Information')
     if ($r -eq 'Yes') {
+      # HIGH fix (code-reviewer): release mutex 'Global\WindowPatcher' BEFORE Start-Process
+      # 否則 new pwsh 啟動跑 line 280 WaitOne(0) 跟 old process 競 mutex,輸 → 顯示 'already running' 然後自殺,使用者最後 zero instance
+      try { $script:Mutex.ReleaseMutex(); $script:Mutex.Dispose() } catch {}
       # Array form -ArgumentList + 預 resolve pwsh.exe (security-reviewer LOW-1/LOW-2 hardening)
       $pwshExe = (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source
       if (-not $pwshExe) { $pwshExe = Join-Path $env:ProgramFiles 'PowerShell\7\pwsh.exe' }
@@ -1792,6 +1795,8 @@ foreach ($kv in $langOpts.GetEnumerator()) {
       $script:Tray.Visible = $false; $script:Tray.Dispose()
       [System.Windows.Application]::Current.Shutdown()
     }
+    # GetNewClosure() snapshots $loc/$label per-iteration —
+    # 沒這個的話所有 handler 會 close over 最後一輪 $loc/$label (PowerShell foreach closure trap)
   }.GetNewClosure())
   $itemLang.DropDownItems.Add($sub) | Out-Null
 }
