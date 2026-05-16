@@ -224,14 +224,15 @@ if ($args.Count -gt 0) {
               $newText = [regex]::Replace($newText, $pat, $rep)
             }
             $newBytes = [System.Text.Encoding]::UTF8.GetBytes($newText)
-            if ($newBytes.Length -le $bytes.Length) {
+            # Registry binary 支援可變長度 (HSR FPS 60→120 會多 1 byte,直接寫)
+            if ($newBytes.Length -lt $bytes.Length) {
               while ($newBytes.Length -lt $bytes.Length) { $newBytes += [byte]0 }
-              $bk = "$env:LOCALAPPDATA\WindowPatcher\wizard-backup-$($c.key).bin"
-              if (-not (Test-Path $bk)) { [System.IO.File]::WriteAllBytes($bk, $bytes) }
-              Set-ItemProperty -Path $regPath -Name $c.key -Value $newBytes -Type Binary
-              Write-Host "  ✓ binary $($c.key)"
-              $patched++
-            } else { Write-Host "  ✗ $($c.key): new bytes 太長,跳過" }
+            }
+            $bk = "$env:LOCALAPPDATA\WindowPatcher\wizard-backup-$($c.key).bin"
+            if (-not (Test-Path $bk)) { [System.IO.File]::WriteAllBytes($bk, $bytes) }
+            Set-ItemProperty -Path $regPath -Name $c.key -Value $newBytes -Type Binary
+            Write-Host ("  ✓ binary $($c.key) ($($bytes.Length) -> $($newBytes.Length) bytes)")
+            $patched++
           } else {
             Set-ItemProperty -Path $regPath -Name $c.key -Value $targetFps -Type DWord
             Write-Host "  ✓ DWORD $($c.key)"
@@ -510,11 +511,7 @@ function Patch-FPS {
       # 保留原始空白 (使用 capture group)
       $newText = $text -replace '("FPS"\s*:\s*)\d+', "`${1}$($Target.fpsTarget)"
       $newBytes = [System.Text.Encoding]::UTF8.GetBytes($newText)
-      # 安全檢查: 新 bytes 不能比原長度長 (避免破壞後續 JSON)
-      if ($newBytes.Length -gt $bytes.Length) {
-        Log "FPS skip ${key}: new $($newBytes.Length) > old $($bytes.Length) bytes (避免破壞 JSON)" 'WARN'
-        continue
-      }
+      # Registry binary 支援可變長度,直接寫即可 (FPS 60→120 會多 1 byte)
       # 備份原 binary 至 config dir (一次性)
       $backupFile = Join-Path $script:ConfigDir "backup-$($Target.processName)-$key.bin"
       if (-not (Test-Path $backupFile)) {
@@ -580,8 +577,11 @@ function Apply-FpsCandidates {
           $newText = [regex]::Replace($newText, $pat, $rep)
         }
         $newBytes = [System.Text.Encoding]::UTF8.GetBytes($newText)
-        if ($newBytes.Length -le $bytes.Length) {
+        # Registry binary 支援可變長度
+        if ($newBytes.Length -lt $bytes.Length) {
           while ($newBytes.Length -lt $bytes.Length) { $newBytes += [byte]0 }
+        }
+        if ($true) {
           # 備份
           $bk = Join-Path $script:ConfigDir "wizard-backup-$($c.key).bin"
           if (-not (Test-Path $bk)) { [System.IO.File]::WriteAllBytes($bk, $bytes) }
