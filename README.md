@@ -30,11 +30,26 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\WindowPatcher\WindowPatcher-WPF.
 .\APPLY-PATCH.bat
 ```
 
-### FPS note
+### FPS note (2026-05 真實測試確認)
 
-The main supported feature is **window style patching**. HSR Version=10 no longer uses the old single `GraphicsSettings_Model_h*` JSON binary key for graphics settings. Public FPS unlock tools that still write the old key may only create a ghost key that the game does not read.
+End-to-end test on a live StarRail (PID 35188) verified: HSR **still uses** the single
+`GraphicsSettings_Model_h2986158309` JSON binary key (DJB2 hash 5/5 matches).
+The key was previously absent only because the user had never opened the in-game
+graphics settings panel. After clicking any setting + ESC, HSR writes the full
+JSON blob and our wizard correctly diffs + patches FPS to 120.
 
-FPS tooling in this repo is therefore exploratory and disabled for HSR by default (`fpsProfile = "none"`, `fpsTarget = 0`). Use the tray menu **FPS Probe Wizard** or `WindowPatcher\RegProbe.ps1` only if you intentionally want to investigate the current registry schema.
+**Zero-to-hero flow (verified)**:
+1. Start tray (`WindowPatcher\WindowPatcher.bat`) — tray auto-elevates and watches game processes
+2. Start HSR — tray polling injects `WS_THICKFRAME + WS_MAXIMIZEBOX` within 2s
+3. (One-time FPS prep) In HSR: ESC → Settings → Graphics → toggle FPS / any setting → ESC out
+4. Right-click tray icon → **FPS Probe Wizard** → 確定 to baseline
+5. Repeat step 3 once after baseline (this writes the registry key)
+6. Wizard auto-detects HSR exit OR you can re-run `--wizard-diff` to apply 120 FPS
+7. Restart HSR — registry now has `{"FPS":120,...}`, game honors it
+
+FPS tooling is disabled by default for HSR (`fpsProfile = "none"`, `fpsTarget = 0`)
+to avoid noisy "key not found" while baseline isn't set. Activate via tray menu or
+`WindowPatcher\RegProbe.ps1` when you actually want to flip the bit.
 
 ### Key files
 

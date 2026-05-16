@@ -310,12 +310,13 @@ $script:STYLES = [ordered]@{
 }
 
 # === FPS Profile (常見 Unity 遊戲 registry path 與 binary key pattern) ===
-# HSR Version=10 新 schema 的 FPS key 尚未確認; 預設 target 不啟用 FPS tweak.
-# 這些 profile 保留給使用者主動啟用的其他 Unity 遊戲/舊 schema/custom probe。
+# 2026-05 真實 HSR 測試確認: HSR 仍用 GraphicsSettings_Model_h2986158309 (DJB2 hash 驗證 5/5 命中)
+# 必要前提: 使用者進過遊戲設定 → 套用任意設定 → ESC 離開時 HSR 才寫 registry
+# 寫入後 wizard auto-patch 到目標 FPS 已實測 work
 $script:FPS_PROFILES = [ordered]@{
   'none' = @{ Name = '不調整 FPS'; Method = 'none' }
   'unity_cognosphere_starrail' = @{
-    Name = '崩壞星穹鐵道 [新版 schema 失效]'
+    Name = '崩壞星穹鐵道 (Cognosphere)'
     Method = 'unity_registry_binary'
     RegPath = 'HKCU:\Software\Cognosphere\Star Rail'
     KeyPattern = 'GraphicsSettings_Model_h*'
@@ -368,8 +369,9 @@ function Clamp-ScanInterval {
 }
 
 function Get-DefaultConfig {
-  # HSR Version=10 新 schema 的 FPS key 尚未確認
+  # 2026-05 真實測試: HSR 仍用 GraphicsSettings_Model_h2986158309
   # 預設不啟用 FPS 解鎖 (避免 UI 噪音"鍵尚未生成"); 主功能是視窗 style 修補
+  # 想啟用 FPS patch 進 edit target -> 設 fpsTarget=120 + 選 unity_cognosphere_starrail profile
   @{
     targets = @(
       @{
@@ -1028,7 +1030,7 @@ function New-PatcherIcon {
       <StackPanel Grid.Column="1" Grid.Row="0" Margin="16,0,0,0" Width="140">
         <Button x:Name="BtnAdd"  Content="新增" Style="{StaticResource PrimaryButton}" Margin="0,0,0,8"/>
         <Button x:Name="BtnEdit" Content="編輯" Style="{StaticResource SecondaryButton}" Margin="0,0,0,8"/>
-        <Button x:Name="BtnDel"  Content="移除" Style="{StaticResource SecondaryButton}" Margin="0,0,0,24"/>
+        <Button x:Name="BtnDel"  Content="移除" Style="{StaticResource SecondaryButton}" Foreground="#DC2626" Margin="0,0,0,24"/>
         <Button x:Name="BtnNow"  Content="立即套用" Style="{StaticResource SecondaryButton}"/>
       </StackPanel>
 
@@ -1291,7 +1293,7 @@ function Show-SettingsWPF {
             <LineBreak/>
             <Run Text="3. 只有當目標 FPS 大於 0 時,本工具才會"/><Run Text="自動偵測並套用" FontWeight="SemiBold"/><Run Text="你設的值"/>
             <LineBreak/>
-            <Run Text="4. HSR Version=10 FPS key 尚未確認；請先用 RegProbe 找 key,本工具預設不調整 HSR FPS"/>
+            <Run Text="4. 2026-05 真實測試確認: HSR 仍用 GraphicsSettings_Model_h2986158309 (DJB2 hash 已驗證), 使用者進設定動一次後 wizard 即可 patch FPS 到目標值"/>
           </TextBlock>
         </StackPanel>
       </Border>
@@ -1639,14 +1641,18 @@ if (-not (Test-Path $welcomeFlag)) {
           <Run Text="• 用滑鼠拖曳邊框調整大小"/><LineBreak/>
           <Run Text="• 被 PowerToys FancyZones / Windows Snap 抓取"/><LineBreak/>
           <Run Text="次要 - Unity 遊戲 FPS tweak (只在目標 FPS 大於 0 時套用)"/><LineBreak/>
-          <Run Text="• HSR Version=10 FPS key 尚未確認,預設不啟用 FPS tweak"/>
+          <Run Text="• HSR FPS: 進遊戲設定動一次任意選項後,wizard 可自動 patch (新版亦 work)"/>
         </TextBlock>
 
-        <TextBlock Text="使用方式" FontWeight="SemiBold" Foreground="#111827" FontSize="14" Margin="0,0,0,6"/>
+        <TextBlock Text="從零到 120 FPS — 完整流程" FontWeight="SemiBold" Foreground="#111827" FontSize="14" Margin="0,0,0,6"/>
         <TextBlock Foreground="#374151" TextWrapping="Wrap" Margin="0,0,0,16">
-          <Run Text="1. 啟動你的遊戲"/><LineBreak/>
-          <Run Text="2. 本工具會依掃描間隔自動修補 (預設約 2 秒)"/><LineBreak/>
-          <Run Text="3. 想新增其他遊戲: 右下角托盤 → 管理目標 → 新增"/>
+          <Run Text="1. 啟動你的遊戲 (HSR / 原神 / 等)"/><LineBreak/>
+          <Run Text="2. 本工具自動修補視窗 style (約 2 秒內) → 可拖曳邊框 / 最大化 / Snap"/><LineBreak/>
+          <Run Text="3. (FPS) 進遊戲 設定 → 畫面 → 切換 FPS 值 → ESC 離開設定"/><LineBreak/>
+          <Run Text="4. 右下角托盤圖示 → 右鍵 → FPS 探查精靈 → 確定建基線"/><LineBreak/>
+          <Run Text="5. wizard 自動 diff + patch 到目標 FPS,重啟遊戲生效"/><LineBreak/>
+          <Run Text=""/><LineBreak/>
+          <Run Text="本工具關閉後縮到右下角系統托盤; 右鍵圖示開啟管理選單" FontStyle="Italic" Foreground="#6B7280"/>
         </TextBlock>
 
         <Border Background="#FFFBEB" BorderBrush="#FBBF24" BorderThickness="1" CornerRadius="6" Padding="14,12">
