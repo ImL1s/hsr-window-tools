@@ -46,6 +46,12 @@ Windows PowerShell tooling that makes Honkai: Star Rail and similar Unity game w
 .\Install-Autostart.bat      # creates HIGHEST scheduled task
 .\Uninstall-Autostart.bat    # removes it
 
+# (Optional) Pin to Start Menu + Desktop (admin-elevated shortcuts)
+.\Install-StartMenu.bat      # creates Start Menu + Desktop .lnk with admin flag
+.\Uninstall-StartMenu.bat    # removes them
+# Then: press Win → search "WindowPatcher" → right-click → 釘選到「開始」畫面 / 釘選到工作列
+# (Win11 22H2+ blocks programmatic taskbar pinning, so the last pin is a one-click manual step)
+
 # CLI smoke checks
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\WindowPatcher\WindowPatcher-WPF.ps1 --help
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\WindowPatcher\WindowPatcher-WPF.ps1 --status
@@ -59,6 +65,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\WindowPatcher\WindowPatcher-WPF.
 - Config (targets, FPS profile, scan interval) is persisted to `%LOCALAPPDATA%\WindowPatcher\config.json` and loaded on every start.
 - The tray app runs a `DispatcherTimer` (default 2s) that detects game processes and automatically applies window style + FPS patches without any manual click.
 - Install-Autostart.bat registers a `onlogon HIGHEST` scheduled task so the tray relaunches itself after every Windows login.
+- Install-StartMenu.bat creates a Start Menu + Desktop `.lnk` (with the `.lnk` admin-elevation flag set, byte `0x15 |= 0x20`) so users can launch WindowPatcher from `Win + search` or the desktop with one UAC prompt. Best-effort attempts to pin to the taskbar; Win11 22H2+ usually blocks this, so the script prints a one-step manual fallback (right-click → 釘選到工作列).
 
 ### FPS note (2026-05 真實測試確認)
 
@@ -146,6 +153,16 @@ Remove-Item "$env:LOCALAPPDATA\WindowPatcher" -Recurse -Force
 # 啟動托盤模式
 .\WindowPatcher\WindowPatcher.bat
 
+# (可選) 開機自動啟動
+.\Install-Autostart.bat       # 建 HIGHEST schtasks
+.\Uninstall-Autostart.bat     # 移除
+
+# (可選) 釘到開始選單 + 桌面捷徑 (內建 admin 提權 flag)
+.\Install-StartMenu.bat       # 建 Start Menu + Desktop .lnk
+.\Uninstall-StartMenu.bat     # 移除
+# 然後: Win 鍵 → 搜「WindowPatcher」→ 右鍵 → 釘選到「開始」畫面 / 釘選到工作列
+# (Win11 22H2+ 擋了程式化釘選工作列,所以最後這一下是手動)
+
 # CLI 基本檢查
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\WindowPatcher\WindowPatcher-WPF.ps1 --help
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\WindowPatcher\WindowPatcher-WPF.ps1 --status
@@ -188,6 +205,8 @@ FPS tweak 預設不啟用 (`fpsProfile = "none"`, `fpsTarget = 0`) 是為了避�
 | `APPLY-PATCH*.bat` | 舊版 wrapper，可選擇 resize |
 | `HsrWatcher.ps1` | 舊版 polling watcher |
 | `Install-Watcher.bat` / `Uninstall-Watcher.bat` | 舊版排程 watcher 安裝/移除 |
+| `Install-Autostart.bat` / `Uninstall-Autostart.bat` | 開機自啟動 (schtasks onlogon HIGHEST) |
+| `Install-StartMenu.bat` / `Uninstall-StartMenu.bat` | Start Menu + 桌面捷徑 (`.lnk` byte 0x15 admin flag,Win 搜尋即見) |
 | `WindowPatcher/RegProbe.ps1` | FPS key 探查用 registry diff helper |
 | `WindowPatcher/FPS-Wizard.ps1` | CLI 版 FPS 探查精靈 wrapper |
 
