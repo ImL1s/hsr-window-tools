@@ -68,14 +68,15 @@ The key was previously absent only because the user had never opened the in-game
 graphics settings panel. After clicking any setting + ESC, HSR writes the full
 JSON blob and our wizard correctly diffs + patches FPS to 120.
 
-**Zero-to-hero flow (verified)**:
+**Zero-to-hero flow (verified, no need to close HSR)**:
 1. Start tray (`WindowPatcher\WindowPatcher.bat`) — tray auto-elevates and watches game processes
 2. Start HSR — tray polling injects `WS_THICKFRAME + WS_MAXIMIZEBOX` within 2s
-3. (One-time FPS prep) In HSR: ESC → Settings → Graphics → toggle FPS / any setting → ESC out
-4. Right-click tray icon → **FPS Probe Wizard** → 確定 to baseline
-5. Repeat step 3 once after baseline (this writes the registry key)
-6. Wizard auto-detects HSR exit OR you can re-run `--wizard-diff` to apply 120 FPS
-7. Restart HSR — registry now has `{"FPS":120,...}`, game honors it
+3. Right-click tray icon → **FPS Probe Wizard** → 確定 to baseline
+4. In HSR: ESC → Settings → Graphics → toggle FPS → ESC out of settings panel (don't close the game)
+5. Wizard polls registry every 2s, detects FPS binary change → auto-prompts "patch to 120?"
+6. Click Yes → registry now `{"FPS":120,...}` + wizard auto-enables persistent guard
+7. **Persistent guard**: any later HSR settings change that overwrites FPS gets re-patched within 2s by main DispatcherTimer
+8. Restart HSR — game reads `{"FPS":120}` and runs at 120 FPS
 
 FPS tooling is disabled by default for HSR (`fpsProfile = "none"`, `fpsTarget = 0`)
 to avoid noisy "key not found" while baseline isn't set. Activate via tray menu or
@@ -158,13 +159,15 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\WindowPatcher\WindowPatcher-WPF.
 
 對活 HSR (PID 35188) 端到端測試確認:HSR **仍使用** 單一 `GraphicsSettings_Model_h2986158309` JSON binary key (DJB2 hash 演算法已驗證 5/5 命中)。先前看不到此 key 純粹是因為使用者**從未開過遊戲內畫面設定**,只要進設定隨便動一個選項 + ESC,HSR 就會把完整 JSON blob (含 `"FPS":N`) 寫入 registry,wizard 立刻能 diff + patch 為 120。
 
-**從零到 120 FPS 完整流程 (已驗證 work)**:
-1. 啟動 tray (`WindowPatcher\WindowPatcher.bat`) — tray 自動提權並 watch 遊戲 process
+**從零到 120 FPS 完整流程 (不需關 HSR,已驗證 E2E)**:
+1. 啟動 tray (`WindowPatcher\WindowPatcher.bat`) — 自動提權 + watch 遊戲 process
 2. 啟動 HSR — tray 約 2 秒內注入 `WS_THICKFRAME + WS_MAXIMIZEBOX`
-3. (一次性 FPS 準備) HSR 內: ESC → 設定 → 畫面 → 切換 FPS / 任意選項 → ESC 離開
-4. 右下角托盤 → 右鍵 → **FPS 探查精靈** → 確定建基線
-5. 此基線之後,wizard 會 watch HSR 退出;之後在 HSR 內動任意設定再 ESC,wizard 自動 diff + patch
-6. 重啟 HSR — registry 已含 `{"FPS":120,...}`,遊戲讀到後即生效
+3. 右下角托盤 → 右鍵 → **FPS 探查精靈** → 確定建基線 (記下當前 registry 快照)
+4. HSR 內: ESC → 設定 → 畫面 → 切換 FPS → ESC 關設定面板 (**不必關遊戲**)
+5. Wizard 每 2 秒 polling registry,偵測 FPS binary 變化 → 自動跳「是否 patch 到 120?」對話框
+6. 點「是」→ registry 寫入 `{"FPS":120,...}` + **自動啟用持續守護**
+7. **持續守護**: 之後 HSR 若動其他設定把 FPS 寫回 30/60,主 DispatcherTimer 2 秒內自動 re-patch 回 120
+8. 重啟 HSR — 遊戲讀 `{"FPS":120}` → 跑 120 FPS
 
 FPS tweak 預設不啟用 (`fpsProfile = "none"`, `fpsTarget = 0`) 是為了避免「找不到 key」噪音 — 透過托盤選單的 **FPS 探查精靈** 或 `WindowPatcher\RegProbe.ps1` 主動開啟即可。
 

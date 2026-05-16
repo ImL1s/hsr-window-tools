@@ -154,7 +154,7 @@ if ($args.Count -gt 0) {
       Write-Host "  路徑: $bf"
       Write-Host "  Registry: $regPath"
       Write-Host ""
-      Write-Host "下一步: 進 HSR 動 FPS 設定 → 完整退出 → 跑 --wizard-diff"
+      Write-Host "下一步: 進 HSR 動 FPS 設定 → ESC 關設定面板 → 跑 --wizard-diff (不必關遊戲)"
       exit 0
     }
     '--wizard-diff' {
@@ -183,7 +183,7 @@ if ($args.Count -gt 0) {
       }
       Write-Host "新增 $($added.Count) key, 變更 $($changed.Count) key"
       Write-Host ""
-      if ($added.Count -eq 0 -and $changed.Count -eq 0) { Write-Host "無差異 (HSR 可能沒完整退出)"; exit 0 }
+      if ($added.Count -eq 0 -and $changed.Count -eq 0) { Write-Host "無差異 (等 2-3 秒讓 HSR flush registry 後再試)"; exit 0 }
       $cands = @()
       foreach ($k in $added) {
         $info = $current[$k]
@@ -678,11 +678,27 @@ function Run-FpsWizardDiff {
     if ($r -eq 'Yes') {
       $patched = Apply-FpsCandidates -Candidates $candidates -TargetFPS $TargetFPS -Path $Path
       Add-Activity "FPS Wizard: 已 patch $patched 個 key → $TargetFPS"
-      if ($script:Tray) { $script:Tray.ShowBalloonTip(4000, "FPS 已寫入", "patched $patched 個 key → $TargetFPS FPS", 'Info') }
-      [System.Windows.MessageBox]::Show("完成 — 已 patch $patched 個 key。`n下次啟動 HSR 應該就是 $TargetFPS FPS。`n備份在 $script:ConfigDir", "Wizard 完成", 'OK', 'Information') | Out-Null
+      # 自動啟用 config FPS protect:
+      # HSR 之後若再動其他設定會把 registry 寫回原 FPS,主 DispatcherTimer 會偵測並 re-patch
+      $autoEnabled = $false
+      foreach ($t in $script:Config.targets) {
+        if ($t.processName -eq 'StarRail' -and ($t.fpsTarget -lt $TargetFPS -or $t.fpsProfile -eq 'none')) {
+          $t.fpsTarget = $TargetFPS
+          $t.fpsProfile = 'unity_cognosphere_starrail'
+          $autoEnabled = $true
+        }
+      }
+      if ($autoEnabled) {
+        Save-Config $script:Config
+        Add-Activity "已啟用持續守護 (fpsTarget=$TargetFPS): HSR 若再動設定寫回 FPS,工具 2 秒內自動 re-patch"
+      }
+      if ($script:Tray) { $script:Tray.ShowBalloonTip(4000, "FPS 已寫入", "patched $patched 個 key → $TargetFPS FPS;持續守護已啟動", 'Info') }
+      $msg = "完成 — 已 patch $patched 個 key → $TargetFPS FPS。`n備份在 $script:ConfigDir`n`n"
+      if ($autoEnabled) { $msg += "★ 已啟用「持續守護」: 之後動 HSR 其他設定也不會跑掉,工具會 2 秒內 re-patch。" }
+      [System.Windows.MessageBox]::Show($msg, "Wizard 完成", 'OK', 'Information') | Out-Null
     }
   } else {
-    $summary += "沒找到明顯 FPS 候選。可能:`n  • HSR 沒完整退出 (請確保關閉視窗)`n  • FPS 設定不在此 path`n`n變更 keys (前 5):`n"
+    $summary += "沒找到明顯 FPS 候選。可能:`n  • 等 2-3 秒讓 HSR flush registry 後再試`n  • FPS 設定不在此 path`n`n變更 keys (前 5):`n"
     foreach ($c in ($changed | Select-Object -First 5)) { $summary += "  ~ $($c.key)`n" }
     foreach ($k in ($added | Select-Object -First 5)) { $summary += "  + $k`n" }
     Add-Activity "FPS Wizard: 沒找到 FPS 候選 (新增 $($added.Count), 變更 $($changed.Count))"
@@ -702,7 +718,7 @@ function Start-FpsWizard {
          "  1. 我會為 $Path 建立 registry 基線`n" +
          "  2. 你進 HSR → ESC → 設定 → 畫面`n" +
          "  3. 切換 FPS (60 → 30 套用 → 60 套用)`n" +
-         "  4. 完整退出 HSR (按結束遊戲,不只關視窗)`n" +
+         "  4. ESC 離開設定面板 (不必關遊戲) — 工具會 2 秒內自動偵測`n" +
          "  5. 我自動 diff + 找 FPS key + patch 到 $TargetFPS`n`n" +
          "是否開始?"
   $r = [System.Windows.MessageBox]::Show($msg, "FPS 探查精靈", 'OKCancel', 'Information')
@@ -720,7 +736,7 @@ function Start-FpsWizard {
   $script:WizardStartTime = Get-Date
   Add-Activity "FPS Wizard 啟動 (已記下 $($script:WizardBaseline.Count) keys 當基準)"
   Add-Activity "下一步: 進 HSR → ESC → 設定 → 畫面 → 切換 FPS → ESC 關設定面板 (不必關遊戲)"
-  if ($script:Tray) { $script:Tray.ShowBalloonTip(4000, "FPS Wizard 已啟動", "在 HSR 內動 FPS 設定後完整關閉 HSR,我會自動 diff + patch 到 $TargetFPS", 'Info') }
+  if ($script:Tray) { $script:Tray.ShowBalloonTip(4000, "FPS Wizard 已啟動", "在 HSR 動 FPS 設定 + ESC 關面板後 (不必關遊戲),我會自動 diff + patch 到 $TargetFPS", 'Info') }
 
   $script:WizardTimer = New-Object System.Windows.Threading.DispatcherTimer
   $script:WizardTimer.Interval = [TimeSpan]::FromSeconds(2)

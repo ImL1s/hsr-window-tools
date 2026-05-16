@@ -27,7 +27,7 @@ if (-not (Test-Path $bf)) {
   Write-Host ""
   Write-Host "下一步:" -ForegroundColor Yellow
   Write-Host "  1. 進 HSR → ESC → 設定 → 畫面 → 切換 FPS 30/60 套用"
-  Write-Host "  2. 完整退出 HSR"
+  Write-Host "  2. ESC 關設定面板 (不必關遊戲)"
   Write-Host "  3. 再次跑 RegProbe.ps1 看 diff"
   exit 0
 }

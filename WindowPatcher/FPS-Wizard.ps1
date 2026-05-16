@@ -30,7 +30,7 @@ Write-Host ""
 Write-Host "[2/3] 等你動 HSR FPS 設定..." -ForegroundColor Green
 Write-Host "  1. 進 HSR → ESC → 設定 → 畫面"
 Write-Host "  2. 切換 FPS (60 → 30 套用 → 60 套用)"
-Write-Host "  3. 完整退出 HSR (關閉視窗)"
+Write-Host "  3. 完整退出 HSR (CLI 版需要 process exit; GUI tray menu 不必關遊戲)"
 Write-Host ""
 Write-Host "  我會自動偵測 HSR 退出..." -ForegroundColor Cyan
 
