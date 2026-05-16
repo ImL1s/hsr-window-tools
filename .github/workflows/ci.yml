@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  parse-check:
+    name: PowerShell parse check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse all .ps1 files
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Path . -Recurse -Filter *.ps1
+          Write-Host "Found $($files.Count) PowerShell files"
+          $totalErrors = 0
+          foreach ($f in $files) {
+            $errors = $null; $tokens = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              Write-Host "FAIL $($f.FullName):" -ForegroundColor Red
+              foreach ($e in $errors) { Write-Host "  Line $($e.Extent.StartLineNumber): $($e.Message)" }
+              $totalErrors += $errors.Count
+            } else {
+              Write-Host "OK   $($f.Name) ($((Get-Content $f.FullName).Count) lines)"
+            }
+          }
+          if ($totalErrors -gt 0) {
+            Write-Host "Total parse errors: $totalErrors" -ForegroundColor Red
+            exit 1
+          }
+          Write-Host "All .ps1 files parse OK" -ForegroundColor Green
+
+  lint:
+    name: PSScriptAnalyzer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -SkipPublisherCheck
+      - name: Run analyzer
+        shell: pwsh
+        run: |
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
+          if ($results) {
+            $results | Format-Table -AutoSize
+            Write-Host "Found $($results.Count) ERROR-level issues" -ForegroundColor Red
+            exit 1
+          }
+          Write-Host "No ERROR-level analyzer issues" -ForegroundColor Green
+          # Warning 級別不阻擋,只列出
+          $warnings = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Warning
+          if ($warnings) {
+            Write-Host "$($warnings.Count) Warning-level issues (non-blocking):"
+            $warnings | Format-Table -AutoSize
+          }
+
+  smoke:
+    name: CLI smoke tests
+    runs-on: windows-latest
+    needs: parse-check
+    steps:
+      - uses: actions/checkout@v4
+      - name: CLI --help
+        shell: pwsh
+        run: |
+          $out = pwsh -NoProfile -ExecutionPolicy Bypass -File WindowPatcher/WindowPatcher-WPF.ps1 --help
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $out | Where-Object { $_ -match '^WindowPatcher' } | ForEach-Object { Write-Host $_ }
+          Write-Host "CLI --help exit 0" -ForegroundColor Green
+
+  pester:
+    name: Pester unit tests
+    runs-on: windows-latest
+    needs: parse-check
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Pester
+        shell: pwsh
+        run: Install-Module Pester -Force -Scope CurrentUser -SkipPublisherCheck
+      - name: Run Pester
+        shell: pwsh
+        run: |
+          if (-not (Test-Path tests/)) {
+            Write-Host "No tests/ directory yet; skipping Pester"
+            exit 0
+          }
+          $result = Invoke-Pester -Path tests/ -PassThru -Output Detailed
+          if ($result.FailedCount -gt 0) {
+            Write-Host "$($result.FailedCount) tests failed" -ForegroundColor Red
+            exit 1
+          }
+          Write-Host "All $($result.PassedCount) tests passed" -ForegroundColor Green

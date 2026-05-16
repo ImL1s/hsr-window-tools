@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build zip and create GitHub Release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            $v = '${{ inputs.version }}'
+          } else {
+            $v = '${{ github.ref_name }}'
+          }
+          if (-not $v.StartsWith('v')) { $v = "v$v" }
+          Write-Host "Version: $v"
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Stage release files
+        id: stage
+        shell: pwsh
+        run: |
+          $v = '${{ steps.ver.outputs.version }}'
+          $stage = "stage/hsr-window-tools-$v"
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+
+          # WindowPatcher 主資料夾(完整保留結構)
+          Copy-Item -Path 'WindowPatcher' -Destination "$stage/WindowPatcher" -Recurse -Force
+
+          # 頂層 legacy 入口檔
+          $top = @(
+            'APPLY-PATCH.bat',
+            'APPLY-PATCH-1920x1080.bat',
+            'APPLY-PATCH-2560x1440.bat',
+            'HSR-Patch.ps1',
+            'HsrWatcher.ps1',
+            'Install-Watcher.bat',
+            'Uninstall-Watcher.bat',
+            'README.md',
+            '.gitignore'
+          )
+          foreach ($f in $top) {
+            if (Test-Path $f) { Copy-Item $f -Destination $stage -Force }
+          }
+
+          # LICENSE 若存在
+          if (Test-Path 'LICENSE') { Copy-Item 'LICENSE' $stage -Force }
+
+          # Stage 完成,列出內容
+          Write-Host "Staged files:"
+          Get-ChildItem $stage -Recurse | Select-Object FullName, @{N='KB';E={[Math]::Round($_.Length/1KB,2)}} | Format-Table -AutoSize
+
+      - name: Compress to zip + checksum
+        id: zip
+        shell: pwsh
+        run: |
+          $v = '${{ steps.ver.outputs.version }}'
+          $stage = "stage/hsr-window-tools-$v"
+          $zip = "hsr-window-tools-$v.zip"
+          Compress-Archive -Path "$stage/*" -DestinationPath $zip -Force
+          $hash = Get-FileHash $zip -Algorithm SHA256
+          "SHA256:  $($hash.Hash)" | Out-File "$zip.sha256.txt" -Encoding utf8
+          "File:    $zip"          | Add-Content "$zip.sha256.txt" -Encoding utf8
+          "Size:    $((Get-Item $zip).Length) bytes" | Add-Content "$zip.sha256.txt" -Encoding utf8
+          Write-Host "Built $zip ($($hash.Hash))"
+          Get-ChildItem $zip, "$zip.sha256.txt" | Format-Table -AutoSize
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.version }}
+          name: WindowPatcher ${{ steps.ver.outputs.version }}
+          body: |
+            ## hsr-window-tools ${{ steps.ver.outputs.version }}
+
+            自動 build 的 release。雙擊 `WindowPatcher\WindowPatcher.bat` 啟動托盤模式。
+
+            ### 安裝
+            1. 下載 `hsr-window-tools-${{ steps.ver.outputs.version }}.zip` 並解壓
+            2. 雙擊 `WindowPatcher\WindowPatcher.bat` 啟動托盤
+            3. 啟動 HSR — 工具自動為視窗加 `WS_THICKFRAME + WS_MAXIMIZEBOX`
+
+            ### FPS 120 (HSR)
+            從零到 120 FPS 流程見 README.md「FPS 說明」段。
+
+            ### SHA256
+            見 `hsr-window-tools-${{ steps.ver.outputs.version }}.zip.sha256.txt`
+          files: |
+            hsr-window-tools-*.zip
+            hsr-window-tools-*.zip.sha256.txt
+          draft: false
+          prerelease: false
+          generate_release_notes: true

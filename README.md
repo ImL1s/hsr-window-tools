@@ -1,5 +1,9 @@
 # HSR Window Tools / WindowPatcher v6
 
+[![CI](https://github.com/ImL1s/hsr-window-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/ImL1s/hsr-window-tools/actions/workflows/ci.yml)
+[![Release](https://github.com/ImL1s/hsr-window-tools/actions/workflows/release.yml/badge.svg)](https://github.com/ImL1s/hsr-window-tools/actions/workflows/release.yml)
+[![Latest Release](https://img.shields.io/github/v/release/ImL1s/hsr-window-tools?label=release)](https://github.com/ImL1s/hsr-window-tools/releases/latest)
+
 [繁體中文](#繁體中文) | [English](#english)
 
 ---
