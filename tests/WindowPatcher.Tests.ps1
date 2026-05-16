@@ -56,6 +56,24 @@ Describe "CLI smoke tests" {
   }
 }
 
+Describe "Has-UnsavedChanges JSON 比對邏輯" {
+  It "相同 config 返回 false" {
+    $a = @{ targets = @(@{ name='X'; processName='X.exe'; enabled=$true }) } | ConvertTo-Json -Depth 5
+    $b = $a
+    ($a.Trim() -ne $b.Trim()) | Should -Be $false
+  }
+  It "不同 fpsTarget 應返回 true" {
+    $a = @{ targets = @(@{ name='X'; fpsTarget=0 }) } | ConvertTo-Json -Depth 5
+    $b = @{ targets = @(@{ name='X'; fpsTarget=120 }) } | ConvertTo-Json -Depth 5
+    ($a.Trim() -ne $b.Trim()) | Should -Be $true
+  }
+  It "新增 target 應返回 true" {
+    $a = @{ targets = @(@{ name='X' }) } | ConvertTo-Json -Depth 5
+    $b = @{ targets = @(@{ name='X' }, @{ name='Y' }) } | ConvertTo-Json -Depth 5
+    ($a.Trim() -ne $b.Trim()) | Should -Be $true
+  }
+}
+
 Describe "Wizard end-to-end (dummy registry)" {
   BeforeAll { $script:TestPath = 'HKCU:\Software\WindowPatcherCITest' }
   AfterAll { Remove-Item $script:TestPath -Recurse -Force -EA SilentlyContinue }

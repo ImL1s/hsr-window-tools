@@ -1163,8 +1163,34 @@ function Show-SettingsWPF {
     [System.Windows.MessageBox]::Show($win, $diag, $title, 'OK', 'Information') | Out-Null
     Refresh-Items
   })
+  # 偵測未儲存變更: 比較 in-memory draftConfig vs 磁碟上的 config.json
+  function Has-UnsavedChanges {
+    Sync-RowsToDraft
+    $diskJson = if (Test-Path $script:ConfigPath) { Get-Content $script:ConfigPath -Raw } else { '' }
+    $draftJson = $draftConfig | ConvertTo-Json -Depth 5
+    return ($draftJson.Trim() -ne $diskJson.Trim())
+  }
   $win.FindName('BtnSave').Add_Click({ Commit-Draft; Save-Config $script:Config; $win.Close() })
-  $win.FindName('BtnCancel').Add_Click({ $script:Config = Load-Config; $win.Close() })
+  $win.FindName('BtnCancel').Add_Click({
+    if (Has-UnsavedChanges) {
+      $r = [System.Windows.MessageBox]::Show($win, "你有未儲存的變更,確定要放棄?`n`n是 = 放棄並關閉`n否 = 繼續編輯", "未儲存", 'YesNo', 'Warning')
+      if ($r -ne 'Yes') { return }
+    }
+    $script:Config = Load-Config
+    $win.Close()
+  })
+  # 攔截 X 關窗按鈕 — 同樣 prompt
+  $win.Add_Closing({
+    param($sender, $e)
+    if (Has-UnsavedChanges) {
+      $r = [System.Windows.MessageBox]::Show($win, "你有未儲存的變更,要儲存嗎?`n`n是 = 儲存並關閉`n否 = 不儲存關閉`n取消 = 繼續編輯", "未儲存", 'YesNoCancel', 'Warning')
+      switch ($r) {
+        'Yes'    { Commit-Draft; Save-Config $script:Config }
+        'No'     { $script:Config = Load-Config }
+        'Cancel' { $e.Cancel = $true }
+      }
+    }
+  })
   $list.Add_MouseDoubleClick({
     Sync-RowsToDraft
     $row = $list.SelectedItem; if (-not $row) { return }
