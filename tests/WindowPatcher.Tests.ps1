@@ -301,9 +301,18 @@ Describe "Build-WizardSummary (純函式)" {
     }
   }
 
-  It "[Contract] 主檔有 Build-WizardSummary 函式" {
+  It "[Contract] 主檔 Build-WizardSummary 函式 + 引用 4 個 wizard_summary_* i18n keys (抓 drift)" {
     $main = Get-Content $script:Main -Raw
     $main | Should -Match '(?ms)function Build-WizardSummary \{'
+    if ($main -match '(?ms)function Build-WizardSummary \{(.*?)^\}') {
+      $body = $matches[1]
+      $body | Should -Match 'wizard_summary_header'
+      $body | Should -Match 'wizard_summary_found_prefix'
+      $body | Should -Match 'wizard_summary_apply_prompt'
+      $body | Should -Match 'wizard_summary_no_candidate'
+    } else {
+      throw "主檔找不到 Build-WizardSummary"
+    }
   }
 
   It "candidates>0 → '★ 找到 N 個 FPS 候選' + TargetFPS" {

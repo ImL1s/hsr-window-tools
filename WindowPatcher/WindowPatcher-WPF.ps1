@@ -1785,7 +1785,10 @@ foreach ($kv in $langOpts.GetEnumerator()) {
     $body = $script:Lang.lang_restart_body -f $label
     $r = [System.Windows.Forms.MessageBox]::Show($body, $script:Lang.lang_restart_title, 'YesNo', 'Information')
     if ($r -eq 'Yes') {
-      Start-Process pwsh.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+      # Array form -ArgumentList + 預 resolve pwsh.exe (security-reviewer LOW-1/LOW-2 hardening)
+      $pwshExe = (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source
+      if (-not $pwshExe) { $pwshExe = Join-Path $env:ProgramFiles 'PowerShell\7\pwsh.exe' }
+      Start-Process $pwshExe -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',$PSCommandPath)
       $script:Tray.Visible = $false; $script:Tray.Dispose()
       [System.Windows.Application]::Current.Shutdown()
     }
