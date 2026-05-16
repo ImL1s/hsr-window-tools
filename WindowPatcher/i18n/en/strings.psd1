@@ -9,7 +9,7 @@
     tray_menu_manage_targets  = 'Manage targets...'
     tray_menu_fps_wizard      = 'FPS Wizard (unlock HSR to 120 FPS)...'
     tray_menu_guard_on        = 'Persistent guard: Enable'
-    tray_menu_guard_off       = 'Persistent guard: Disable'
+    tray_menu_guard_off       = 'Persistent guard: Disable (fpsTarget={0})'
     tray_menu_open_log        = 'Open log'
     tray_menu_open_config_dir = 'Open config folder'
     tray_menu_language        = 'Language / 語言'

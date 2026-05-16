@@ -9,7 +9,7 @@
     tray_menu_manage_targets  = '대상 관리...'
     tray_menu_fps_wizard      = 'FPS 마법사 (HSR 120 FPS 잠금 해제)...'
     tray_menu_guard_on        = '지속 보호: 활성화'
-    tray_menu_guard_off       = '지속 보호: 중지'
+    tray_menu_guard_off       = '지속 보호: 중지 (fpsTarget={0})'
     tray_menu_open_log        = '로그 열기'
     tray_menu_open_config_dir = '설정 폴더 열기'
     tray_menu_language        = '언어 / Language'

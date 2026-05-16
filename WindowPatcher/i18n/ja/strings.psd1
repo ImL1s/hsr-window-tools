@@ -9,7 +9,7 @@
     tray_menu_manage_targets  = 'ターゲットを管理...'
     tray_menu_fps_wizard      = 'FPS ウィザード (HSR を 120 FPS に解放)...'
     tray_menu_guard_on        = '常時保護: 有効化'
-    tray_menu_guard_off       = '常時保護: 停止'
+    tray_menu_guard_off       = '常時保護: 停止 (fpsTarget={0})'
     tray_menu_open_log        = 'ログを開く'
     tray_menu_open_config_dir = '設定フォルダを開く'
     tray_menu_language        = '言語 / Language'

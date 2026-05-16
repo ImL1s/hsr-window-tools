@@ -9,7 +9,7 @@
     tray_menu_manage_targets  = '管理目标...'
     tray_menu_fps_wizard      = 'FPS 探查向导 (HSR 解锁到 120 FPS)...'
     tray_menu_guard_on        = '持续守护: 启用'
-    tray_menu_guard_off       = '持续守护: 停止'
+    tray_menu_guard_off       = '持续守护: 停止 (fpsTarget={0})'
     tray_menu_open_log        = '打开 log'
     tray_menu_open_config_dir = '打开配置文件夹'
     tray_menu_language        = '语言 / Language'

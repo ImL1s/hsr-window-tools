@@ -1736,7 +1736,7 @@ $itemGuard = New-Object System.Windows.Forms.ToolStripMenuItem
 function Refresh-GuardItem {
   $hsr = $script:Config.targets | Where-Object { $_.processName -eq 'StarRail' } | Select-Object -First 1
   $on = $hsr -and $hsr.fpsTarget -gt 0 -and $hsr.fpsProfile -like 'unity_*'
-  $script:itemGuard.Text = if ($on) { "持續守護: 停止 (fpsTarget=$($hsr.fpsTarget))" } else { "持續守護: 啟動" }
+  $script:itemGuard.Text = if ($on) { ($script:Lang.tray_menu_guard_off -f $hsr.fpsTarget) } else { $script:Lang.tray_menu_guard_on }
 }
 $script:itemGuard = $itemGuard
 Refresh-GuardItem
