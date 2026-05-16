@@ -50,7 +50,7 @@ if ($args.Count -gt 0) {
       $lp = "$env:LOCALAPPDATA\WindowPatcher\patcher.log"
       Write-Host "Config: $(if(Test-Path $cp){'存在'}else{'未建立'})"
       Write-Host "Log:    $(if(Test-Path $lp){"$((Get-Item $lp).Length) bytes"}else{'無'})"
-      $cliArgPattern = '--(help|list|apply|scan-now|patch-foreground|status)\b'
+      $cliArgPattern = '--(help|list|apply|scan-now|patch-foreground|status|diagnose|wizard-baseline|wizard-diff)\b'
       $mtx = @(Get-CimInstance Win32_Process -Filter "Name = 'pwsh.exe'" -ErrorAction SilentlyContinue | Where-Object {
         $_.ProcessId -ne $PID -and
         $_.CommandLine -like '*WindowPatcher-WPF.ps1*' -and
@@ -253,14 +253,7 @@ if ($args.Count -gt 0) {
 
 [System.Threading.Thread]::CurrentThread.SetApartmentState([System.Threading.ApartmentState]::STA) 2>$null
 
-# Mutex 防止重複啟動
-$script:Mutex = New-Object System.Threading.Mutex($false, 'Global\WindowPatcher')
-if (-not $script:Mutex.WaitOne(0, $false)) {
-  Add-Type -AssemblyName System.Windows.Forms
-  [System.Windows.Forms.MessageBox]::Show("視窗修補器已經在執行中。`n`n請從右下角托盤圖示開啟設定。", "已啟動", 'OK', 'Information') | Out-Null
-  exit
-}
-
+# 先提權再拿 mutex，避免非管理員 parent 尚未退出時 elevated child 誤判已啟動
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
   try {
@@ -272,6 +265,14 @@ if (-not $isAdmin) {
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.MessageBox]::Show("啟動失敗:`n$($_.Exception.Message)", "錯誤", 'OK', 'Error') | Out-Null
   }
+  exit
+}
+
+# Mutex 防止重複啟動
+$script:Mutex = New-Object System.Threading.Mutex($false, 'Global\WindowPatcher')
+if (-not $script:Mutex.WaitOne(0, $false)) {
+  Add-Type -AssemblyName System.Windows.Forms
+  [System.Windows.Forms.MessageBox]::Show("視窗修補器已經在執行中。`n`n請從右下角托盤圖示開啟設定。", "已啟動", 'OK', 'Information') | Out-Null
   exit
 }
 
@@ -358,6 +359,14 @@ $script:LogPath = "$script:ConfigDir\patcher.log"
 
 function Log { param([string]$M, [string]$L='INFO'); Add-Content $script:LogPath ("$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  [$L]  $M") -EA SilentlyContinue }
 
+function Clamp-ScanInterval {
+  param($Value)
+  try { $n = [int]$Value } catch { $n = 2 }
+  if ($n -lt 1) { return 1 }
+  if ($n -gt 60) { return 60 }
+  return $n
+}
+
 function Get-DefaultConfig {
   # HSR Version=10 新 schema 的 FPS key 尚未確認
   # 預設不啟用 FPS 解鎖 (避免 UI 噪音"鍵尚未生成"); 主功能是視窗 style 修補
@@ -395,8 +404,8 @@ function Load-Config {
       }
       $cfg = @{
         targets = @()
-        scanIntervalSec = $(if($raw.scanIntervalSec -and $raw.scanIntervalSec -ne 5){$raw.scanIntervalSec}else{2})
-        showNotifications = [bool]$raw.showNotifications
+        scanIntervalSec = Clamp-ScanInterval $(if($null -ne $raw.scanIntervalSec -and $raw.scanIntervalSec -ne 5){$raw.scanIntervalSec}else{2})
+        showNotifications = $(if($null -ne $raw.showNotifications){[bool]$raw.showNotifications}else{$true})
       }
       $migrated = $false
       foreach ($t in $raw.targets) {
@@ -426,7 +435,14 @@ function Load-Config {
       }
       if ($migrated) { Log "Auto-migrated config: 套上正確 fpsProfile + fpsTarget=120 給已知遊戲" }
       return $cfg
-    } catch { Log "Load failed: $_" 'ERROR' }
+    } catch {
+      Log "Load failed: $_" 'ERROR'
+      try {
+        $backup = "$script:ConfigPath.broken-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+        Copy-Item -LiteralPath $script:ConfigPath -Destination $backup -Force -ErrorAction Stop
+        Log "Backed up broken config to $backup" 'WARN'
+      } catch { Log "Broken config backup failed: $_" 'WARN' }
+    }
   }
   $d = Get-DefaultConfig; Save-Config $d; return $d
 }
@@ -1076,6 +1092,7 @@ function Show-SettingsWPF {
   $win = [Windows.Markup.XamlReader]::Load($reader)
   $win.Icon = $script:WpfIcon
   $list = $win.FindName('TargetList')
+  $draftConfig = $script:Config | ConvertTo-Json -Depth 8 | ConvertFrom-Json
   # B1: 對所有 FindName 結果做 null 防護, 避免 .Text on $null crash
   $activityList = $win.FindName('ActivityList')
   if ($activityList) {
@@ -1091,18 +1108,29 @@ function Show-SettingsWPF {
   $coll = New-Object System.Collections.ObjectModel.ObservableCollection[psobject]
   function Refresh-Items {
     $coll.Clear()
-    foreach ($t in $script:Config.targets) { $coll.Add((Build-Row $t)) | Out-Null }
-    if ($lblStatus) { $lblStatus.Text = "$($script:Config.targets.Count) 個目標 · 已修補 $($script:PatchedHandles.Count) 個視窗" }
+    foreach ($t in @($draftConfig.targets)) { $coll.Add((Build-Row $t)) | Out-Null }
+    if ($lblStatus) { $lblStatus.Text = "$(@($draftConfig.targets).Count) 個目標 · 已修補 $($script:PatchedHandles.Count) 個視窗" }
     if ($activityCount) { $activityCount.Text = "($($script:Activities.Count) 筆)" }
+  }
+  function Sync-RowsToDraft {
+    foreach ($row in @($coll)) {
+      if ($row.Tag) { $row.Tag.enabled = [bool]$row.enabled }
+    }
+  }
+  function Commit-Draft {
+    Sync-RowsToDraft
+    $script:Config = $draftConfig
   }
   $list.ItemsSource = $coll
   Refresh-Items
 
   $win.FindName('BtnAdd').Add_Click({
+    Sync-RowsToDraft
     $t = Show-EditWPF -Existing $null -Parent $win
-    if ($t) { $script:Config.targets = @($script:Config.targets) + $t; Refresh-Items }
+    if ($t) { $draftConfig.targets = @($draftConfig.targets) + $t; Refresh-Items }
   })
   $win.FindName('BtnEdit').Add_Click({
+    Sync-RowsToDraft
     $row = $list.SelectedItem; if (-not $row) { return }
     $e = Show-EditWPF -Existing $row.Tag -Parent $win
     if ($e) {
@@ -1111,11 +1139,13 @@ function Show-SettingsWPF {
     }
   })
   $win.FindName('BtnDel').Add_Click({
+    Sync-RowsToDraft
     $row = $list.SelectedItem; if (-not $row) { return }
-    $script:Config.targets = @($script:Config.targets | Where-Object { $_ -ne $row.Tag })
+    $draftConfig.targets = @($draftConfig.targets | Where-Object { $_ -ne $row.Tag })
     Refresh-Items
   })
   $win.FindName('BtnNow').Add_Click({
+    Commit-Draft
     Save-Config $script:Config
     $r = Scan-And-Patch
     # 完整診斷: 對每個 target 顯示真實狀態而不是模糊的「無需修補」
@@ -1129,9 +1159,10 @@ function Show-SettingsWPF {
     [System.Windows.MessageBox]::Show($win, $diag, $title, 'OK', 'Information') | Out-Null
     Refresh-Items
   })
-  $win.FindName('BtnSave').Add_Click({ Save-Config $script:Config; $win.Close() })
+  $win.FindName('BtnSave').Add_Click({ Commit-Draft; Save-Config $script:Config; $win.Close() })
   $win.FindName('BtnCancel').Add_Click({ $script:Config = Load-Config; $win.Close() })
   $list.Add_MouseDoubleClick({
+    Sync-RowsToDraft
     $row = $list.SelectedItem; if (-not $row) { return }
     $e = Show-EditWPF -Existing $row.Tag -Parent $win
     if ($e) {
@@ -1558,7 +1589,7 @@ $script:Tray.add_DoubleClick({ Show-SettingsWPF })
 # Timer
 # B6: scanIntervalSec 變更需重啟工具 (Interval 只在啟動時讀一次, 不會 hot-reload)
 $script:Timer = New-Object System.Windows.Threading.DispatcherTimer
-$script:Timer.Interval = [TimeSpan]::FromSeconds([int]$script:Config.scanIntervalSec)
+$script:Timer.Interval = [TimeSpan]::FromSeconds((Clamp-ScanInterval $script:Config.scanIntervalSec))
 $script:Timer.Add_Tick({
   $null = Scan-And-Patch
   $w = $script:PatchedHandles.Count
@@ -1623,9 +1654,10 @@ if (-not (Test-Path $welcomeFlag)) {
             <TextBlock Text="風險提醒" FontWeight="SemiBold" Foreground="#92400E" FontSize="13" Margin="0,0,0,6"/>
             <TextBlock Foreground="#92400E" FontSize="12" TextWrapping="Wrap">
               <Run Text="• 本工具需要管理員權限 (修補其他遊戲視窗 style)"/><LineBreak/>
-              <Run Text="• 對 Hoyoverse 遊戲: 只動 user32 API 與 HKCU registry, 社群實證無封號"/><LineBreak/>
-              <Run Text="• 但仍違反 Hoyoverse 服務條款 (理論留處罰權)"/><LineBreak/>
-              <Run Text="• 自負風險。請勿在主帳號做敏感操作前確認"/>
+              <Run Text="• 視窗修補只呼叫 user32 API, 不注入遊戲、不改遊戲檔"/><LineBreak/>
+              <Run Text="• FPS tweak 可能寫入 HKCU registry；HSR 預設不啟用"/><LineBreak/>
+              <Run Text="• 遊戲服務條款與偵測政策可能改變, 不保證帳號風險為零"/><LineBreak/>
+              <Run Text="• 自負風險；只在信任來源與可信資料夾中執行本工具"/>
             </TextBlock>
           </StackPanel>
         </Border>

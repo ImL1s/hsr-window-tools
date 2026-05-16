@@ -63,8 +63,10 @@ The project has been smoke-tested against a live StarRail window:
 ### Risks and limitations
 
 - This tool manipulates another process's window style via Win32 APIs and may require elevation.
+- The launchers use `ExecutionPolicy Bypass` for local unsigned scripts; inspect the source and only run copies from this repository.
 - Restarting the game window restores the original window style; the patch is not permanent.
 - FPS registry changes are a separate risk surface from window style patching and are not enabled by default for HSR.
+- The legacy scheduled-task watcher runs from the local script path with highest privileges; install it only from a trusted, non-shared folder.
 - Use at your own risk; game publisher policies may change.
 
 ### Uninstall
@@ -140,8 +142,10 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\WindowPatcher\WindowPatcher-WPF.
 ### 風險與限制
 
 - 本工具透過 Win32 API 操作其他 process 的視窗 style，可能需要管理員權限。
+- 啟動器會使用 `ExecutionPolicy Bypass` 執行本機未簽章腳本；請先檢查來源，只執行本 repo 的可信副本。
 - 視窗 style 修補不是永久修改；重啟遊戲視窗後會回到原狀。
 - FPS registry 改寫和視窗 style 修補是不同風險面，且 HSR 預設不啟用 FPS patch。
+- 舊版排程 watcher 會從本機腳本路徑以最高權限執行；只建議從可信、非共用資料夾安裝。
 - 遊戲廠商政策可能改變，請自行承擔使用風險。
 
 ### 卸載

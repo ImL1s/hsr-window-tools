@@ -5,17 +5,34 @@
 #   .\HSR-Patch.ps1 -W 1920 -H 1080 -X 0 -Y 0
 param([int]$W=0,[int]$H=0,[int]$X=-1,[int]$Y=-1)
 
+$resultPath = Join-Path $env:TEMP 'hsr-patch-result.json'
+
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
-  Remove-Item "$env:TEMP\hsr-patch-result.json" -ErrorAction SilentlyContinue
+  Remove-Item $resultPath -ErrorAction SilentlyContinue
   $argList = @('-NoProfile','-ExecutionPolicy','Bypass','-File',$PSCommandPath)
   if ($W -gt 0) { $argList += '-W',$W }
   if ($H -gt 0) { $argList += '-H',$H }
   if ($X -ge 0) { $argList += '-X',$X }
   if ($Y -ge 0) { $argList += '-Y',$Y }
-  Start-Process pwsh -ArgumentList $argList -Verb RunAs -WindowStyle Hidden -Wait
-  Get-Content "$env:TEMP\hsr-patch-result.json" -ErrorAction SilentlyContinue
-  exit
+  try {
+    $child = Start-Process pwsh -ArgumentList $argList -Verb RunAs -WindowStyle Hidden -Wait -PassThru
+  } catch {
+    @{ ok=$false; err="UAC cancelled or elevation failed: $($_.Exception.Message)" } | ConvertTo-Json
+    exit 1
+  }
+  if (-not (Test-Path $resultPath)) {
+    @{ ok=$false; err="Elevated patch did not produce result"; exitCode=$child.ExitCode } | ConvertTo-Json
+    exit 1
+  }
+  $json = Get-Content $resultPath -Raw -ErrorAction SilentlyContinue
+  Write-Output $json
+  try {
+    $result = $json | ConvertFrom-Json
+    exit $(if($result.ok){0}else{1})
+  } catch {
+    exit $(if($child.ExitCode -eq 0){0}else{$child.ExitCode})
+  }
 }
 
 Add-Type @"
@@ -31,10 +48,10 @@ public class P {
 }
 "@
 
-$hsr = Get-Process StarRail -ErrorAction SilentlyContinue
+$hsr = Get-Process StarRail -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Select-Object -First 1
 if (-not $hsr) {
-  @{ ok=$false; err="HSR not running" } | ConvertTo-Json | Out-File "$env:TEMP\hsr-patch-result.json" -Encoding UTF8
-  exit
+  @{ ok=$false; err="HSR not running or no main window" } | ConvertTo-Json | Out-File $resultPath -Encoding UTF8
+  exit 1
 }
 $hwnd = $hsr.MainWindowHandle
 $pre = [P]::GetWindowLong($hwnd, -16)
@@ -57,8 +74,9 @@ if ($W -gt 0 -and $H -gt 0) {
 $post = [P]::GetWindowLong($hwnd, -16)
 $r = New-Object P+RECT
 [P]::GetWindowRect($hwnd, [ref]$r) | Out-Null
+$ok = (($post -band 0x40000) -ne 0) -and (($post -band 0x10000) -ne 0)
 @{
-  ok = (($post -band 0x40000) -ne 0)
+  ok = $ok
   pre = "0x$('{0:X8}' -f $pre)"
   post = "0x$('{0:X8}' -f $post)"
   thickframe = (($post -band 0x40000) -ne 0)
@@ -66,4 +84,5 @@ $r = New-Object P+RECT
   resized = $resized
   position = "$($r.L),$($r.T)"
   size = "$($r.R-$r.L)x$($r.B-$r.T)"
-} | ConvertTo-Json | Out-File "$env:TEMP\hsr-patch-result.json" -Encoding UTF8
+} | ConvertTo-Json | Out-File $resultPath -Encoding UTF8
+exit $(if($ok){0}else{1})

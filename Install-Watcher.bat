@@ -5,7 +5,8 @@ echo 即將安裝背景監聽器,自動在 HSR 啟動時修補視窗 style
 echo 安裝後完全無感,啟動遊戲就自動有 thickframe
 echo.
 pause
-schtasks /create /tn HsrWindowWatcher /tr "pwsh -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"%~dp0HsrWatcher.ps1\"" /sc onlogon /rl HIGHEST /f
+set "HSR_WATCHER_SCRIPT=%~dp0HsrWatcher.ps1"
+pwsh -NoProfile -ExecutionPolicy Bypass -Command "$q=[char]34; $arg='-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File '+$q+$env:HSR_WATCHER_SCRIPT+$q; $action=New-ScheduledTaskAction -Execute 'pwsh.exe' -Argument $arg; $trigger=New-ScheduledTaskTrigger -AtLogOn; Register-ScheduledTask -TaskName 'HsrWindowWatcher' -Action $action -Trigger $trigger -RunLevel Highest -Force | Out-Null"
 if errorlevel 1 (
   echo.
   echo [X] 建立排程任務失敗 - 試試手動以管理員執行本檔

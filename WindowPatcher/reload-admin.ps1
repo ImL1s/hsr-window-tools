@@ -9,10 +9,11 @@ if (-not $isAdmin) {
 }
 
 $killed = 0
+$main = Join-Path $PSScriptRoot 'WindowPatcher-WPF.ps1'
 Get-Process pwsh -ErrorAction SilentlyContinue | ForEach-Object {
   try {
     $cmd = (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)").CommandLine
-    if ($cmd -like '*WindowPatcher-WPF*') {
+    if ($cmd -and $cmd -like "*$main*" -and $cmd -notmatch '--(help|list|apply|scan-now|patch-foreground|status|diagnose|wizard-baseline|wizard-diff)\b') {
       Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
       $killed++
     }
@@ -21,7 +22,6 @@ Get-Process pwsh -ErrorAction SilentlyContinue | ForEach-Object {
 Start-Sleep -Milliseconds 500
 
 # 啟動新托盤
-$main = Join-Path $PSScriptRoot 'WindowPatcher-WPF.ps1'
 Start-Process pwsh -ArgumentList '-NoProfile','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',$main
 
 # 寫結果

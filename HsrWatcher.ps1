@@ -13,7 +13,8 @@ public class HP {
 "@
 
 $log = "$env:LOCALAPPDATA\HsrWatcher.log"
-$patchedPids = @{}  # 避免對同一 PID 重複修補
+$patchedPids = @{}  # 已確認完成的 PID；每輪仍重新驗證 style，避免同 PID 被遊戲重設後漏補
+$desiredMask = 0x40000 -bor 0x10000
 
 function Write-Log($msg) {
   Add-Content -Path $log -Value ("{0}  {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $msg)
@@ -21,7 +22,6 @@ function Write-Log($msg) {
 
 function Patch-Hsr {
   param([int]$ProcessId)
-  if ($patchedPids.ContainsKey($ProcessId)) { return }
   $p = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
   if (-not $p) { return }
   # 等視窗 handle 出現,最多 30 秒
@@ -36,17 +36,22 @@ function Patch-Hsr {
   }
   $hwnd = $p.MainWindowHandle
   $pre = [HP]::GetWindowLong($hwnd, -16)
-  if (($pre -band 0x40000) -ne 0) {
-    Write-Log ("PID={0} 已有 THICKFRAME (style 0x{1:X8}),不需修補" -f $ProcessId, $pre)
+  if (($pre -band $desiredMask) -eq $desiredMask) {
+    if (-not $patchedPids.ContainsKey($ProcessId)) {
+      Write-Log ("PID={0} 已有 THICKFRAME+MAXIMIZEBOX (style 0x{1:X8}),不需修補" -f $ProcessId, $pre)
+    }
     $patchedPids[$ProcessId] = $true
     return
   }
-  [HP]::SetWindowLong($hwnd, -16, ($pre -bor 0x40000 -bor 0x10000)) | Out-Null
+  if ($patchedPids.ContainsKey($ProcessId)) {
+    Write-Log ("PID={0} style 被重設或不完整,重新修補 (style 0x{1:X8})" -f $ProcessId, $pre)
+  }
+  [HP]::SetWindowLong($hwnd, -16, ($pre -bor $desiredMask)) | Out-Null
   [HP]::SetWindowPos($hwnd, [IntPtr]::Zero, 0,0,0,0, 0x27) | Out-Null
   Start-Sleep -Milliseconds 200
   $post = [HP]::GetWindowLong($hwnd, -16)
-  $ok = ($post -band 0x40000) -ne 0
-  Write-Log ("PID={0}  0x{1:X8} -> 0x{2:X8}  THICKFRAME={3}" -f $ProcessId, $pre, $post, $ok)
+  $ok = (($post -band $desiredMask) -eq $desiredMask)
+  Write-Log ("PID={0}  0x{1:X8} -> 0x{2:X8}  THICKFRAME+MAXIMIZEBOX={3}" -f $ProcessId, $pre, $post, $ok)
   if ($ok) { $patchedPids[$ProcessId] = $true }
 }
 
