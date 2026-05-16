@@ -4,6 +4,23 @@
 [![Release](https://github.com/ImL1s/hsr-window-tools/actions/workflows/release.yml/badge.svg)](https://github.com/ImL1s/hsr-window-tools/actions/workflows/release.yml)
 [![Latest Release](https://img.shields.io/github/v/release/ImL1s/hsr-window-tools?label=release)](https://github.com/ImL1s/hsr-window-tools/releases/latest)
 
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center"><strong>HSR window with thickframe (resizable + maximizable)</strong></td>
+    <td align="center"><strong>Settings window — target management UI</strong></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/01-hsr-thickframe.png" alt="HSR thickframe demo" width="500"/></td>
+    <td><img src="docs/screenshots/03-settings-window.png" alt="Settings window" width="500"/></td>
+  </tr>
+  <tr>
+    <td>StarRail.exe window after patching: standard Windows title bar with min/max/close buttons, draggable border, snap-able by FancyZones / Win+arrow. (UID redacted)</td>
+    <td>WPF Fluent UI tray app: target list (StarRail / Calculator) with style indicators, primary actions on right (red Delete = destructive), activity feed at bottom.</td>
+  </tr>
+</table>
+
 [繁體中文](#繁體中文) | [English](#english)
 
 ---
