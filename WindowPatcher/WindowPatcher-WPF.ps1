@@ -450,7 +450,20 @@ function Load-Config {
   }
   $d = Get-DefaultConfig; Save-Config $d; return $d
 }
-function Save-Config { param($c); $c | ConvertTo-Json -Depth 5 | Set-Content $script:ConfigPath -Encoding UTF8; Log "Saved ($($c.targets.Count) targets)" }
+function Save-Config {
+  # Atomic write: 先寫 .tmp 再 rename (避免 reader 讀到截斷 JSON 觸發 Load-Config catch + backup-broken)
+  param($c)
+  $tmp = "$script:ConfigPath.tmp"
+  try {
+    $c | ConvertTo-Json -Depth 5 | Set-Content $tmp -Encoding UTF8
+    Move-Item $tmp $script:ConfigPath -Force
+    Log "Saved ($($c.targets.Count) targets)"
+  } catch {
+    Log "Save-Config failed: $_" 'ERROR'
+    if (Test-Path $tmp) { Remove-Item $tmp -Force -EA SilentlyContinue }
+    throw
+  }
+}
 $script:Config = Load-Config
 $script:PatchedHandles = @{}
 $script:FpsPatchedKeys = @{}
@@ -601,14 +614,12 @@ function Apply-FpsCandidates {
         if ($newBytes.Length -lt $bytes.Length) {
           while ($newBytes.Length -lt $bytes.Length) { $newBytes += [byte]0 }
         }
-        if ($true) {
-          # 備份
-          $bk = Join-Path $script:ConfigDir "wizard-backup-$($c.key).bin"
-          if (-not (Test-Path $bk)) { [System.IO.File]::WriteAllBytes($bk, $bytes) }
-          Set-ItemProperty -Path $Path -Name $c.key -Value $newBytes -Type Binary
-          Log "FPS Wizard: patched binary $($c.key) → $TargetFPS"
-          $n++
-        }
+        # 備份原 binary (一次性)
+        $bk = Join-Path $script:ConfigDir "wizard-backup-$($c.key).bin"
+        if (-not (Test-Path $bk)) { [System.IO.File]::WriteAllBytes($bk, $bytes) }
+        Set-ItemProperty -Path $Path -Name $c.key -Value $newBytes -Type Binary
+        Log "FPS Wizard: patched binary $($c.key) → $TargetFPS"
+        $n++
       } else {
         Set-ItemProperty -Path $Path -Name $c.key -Value $TargetFPS -Type DWord
         Log "FPS Wizard: patched DWORD $($c.key) → $TargetFPS"

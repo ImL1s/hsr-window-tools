@@ -76,7 +76,8 @@ Describe "Has-UnsavedChanges JSON 比對邏輯" {
 
 Describe "Test-WizardDiffHasFps polling 邏輯" {
   BeforeAll {
-    # Inline 同樣的函式定義 (跟主檔一致),測純邏輯
+    # NOTE: 雙份 source 已知 trade-off — 主檔不能 dot-source (有 mutex + auto-elevate + GUI 啟動).
+    # 改善: 下方 'main + test 函式 source 同步' contract test 偵測漂移
     function Test-WizardDiffHasFps {
       param([hashtable]$Baseline, [hashtable]$Current)
       $fpsPattern = '"FPS"|"fps"|TargetFrameRate|MaxFPS|FrameRate'
@@ -90,6 +91,20 @@ Describe "Test-WizardDiffHasFps polling 邏輯" {
         }
       }
       return $false
+    }
+  }
+
+  It "[Contract] 主檔的 Test-WizardDiffHasFps 內容跟 test 一致 (偵測 double-source 漂移)" {
+    $mainContent = Get-Content $script:Main -Raw
+    # 抽出主檔 Test-WizardDiffHasFps 函式 body (從 'function Test-WizardDiffHasFps' 到下一個 'function ' 或 '\n}' 結尾)
+    if ($mainContent -match '(?ms)function Test-WizardDiffHasFps \{(.*?)^\}') {
+      $mainBody = $matches[1]
+      # 核心 regex pattern 必須一致
+      $mainBody | Should -Match '"FPS"\|"fps"\|TargetFrameRate\|MaxFPS\|FrameRate'
+      # 結構檢查: 主檔該函式必須有 binary type filter
+      $mainBody | Should -Match 'type -ne ''binary'''
+    } else {
+      throw "主檔找不到 Test-WizardDiffHasFps 函式 (可能被刪/改名)"
     }
   }
 
