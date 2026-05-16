@@ -701,28 +701,57 @@ function Start-FpsWizard {
   $script:WizardPath = $Path
   $script:WizardSeen = $false
   $script:WizardStartTime = Get-Date
-  Add-Activity "FPS Wizard 已啟動,基線 $($script:WizardBaseline.Count) keys"
-  if ($script:Tray) { $script:Tray.ShowBalloonTip(4000, "FPS Wizard 已啟動", "請進 HSR 動 FPS 設定,完整退出後我會自動處理", 'Info') }
+  Add-Activity "FPS Wizard 啟動 (已記下 $($script:WizardBaseline.Count) keys 當基準)"
+  Add-Activity "下一步: 進 HSR → ESC → 設定 → 畫面 → 切換 FPS → 完整關閉 HSR 遊戲"
+  if ($script:Tray) { $script:Tray.ShowBalloonTip(4000, "FPS Wizard 已啟動", "在 HSR 內動 FPS 設定後完整關閉 HSR,我會自動 diff + patch 到 $TargetFPS", 'Info') }
 
   $script:WizardTimer = New-Object System.Windows.Threading.DispatcherTimer
   $script:WizardTimer.Interval = [TimeSpan]::FromSeconds(2)
   $script:WizardTimer.Add_Tick({
+    # 1. Polling diff (主路徑): 不等 HSR 退出,registry 變化含 FPS 字串就立刻 patch
+    #    HSR 在 ESC 關設定面板時就會 flush registry,使用者不必完整關閉遊戲
+    try {
+      $current = Snapshot-Reg $script:WizardPath
+      $foundFpsChange = $false
+      foreach ($k in $current.Keys) {
+        $info = $current[$k]
+        if (-not $script:WizardBaseline.ContainsKey($k)) {
+          # 新增 key
+          if ($info.type -eq 'binary' -and $info.text -match '"FPS"|"fps"|TargetFrameRate|MaxFPS|FrameRate') {
+            $foundFpsChange = $true; break
+          }
+        } elseif ($info.type -eq 'binary' -and $script:WizardBaseline[$k].type -eq 'binary' -and $info.bytes_hex -ne $script:WizardBaseline[$k].bytes_hex) {
+          # 變更 binary key 且含 FPS
+          if ($info.text -match '"FPS"|"fps"|TargetFrameRate|MaxFPS|FrameRate') {
+            $foundFpsChange = $true; break
+          }
+        }
+      }
+      if ($foundFpsChange) {
+        $script:WizardTimer.Stop()
+        Add-Activity "偵測到 registry 內 FPS 欄位變化 — 立即 diff + patch (不需等 HSR 關閉)"
+        Run-FpsWizardDiff -TargetFPS $script:WizardTargetFPS -Path $script:WizardPath
+        return
+      }
+    } catch { Log "Wizard polling diff err: $_" 'WARN' }
+
+    # 2. HSR exit 備援路徑 (兼容舊行為,若使用者完整退出 HSR)
     $proc = Get-Process StarRail -ErrorAction SilentlyContinue
     if ($proc) {
       if (-not $script:WizardSeen) {
         $script:WizardSeen = $true
-        Add-Activity "FPS Wizard: 偵測到 HSR (PID $($proc.Id)),等你動完設定退出"
+        Add-Activity "偵測到 HSR (PID $($proc.Id)) — 在 HSR 改 FPS 設定 + ESC 關設定面板後我會立即偵測 (不必關遊戲)"
       }
     } else {
       if ($script:WizardSeen) {
         $script:WizardTimer.Stop()
-        Add-Activity "FPS Wizard: HSR 已退出,分析 registry"
+        Add-Activity "HSR 已關閉 — 強制 diff 看是否有變化"
         Start-Sleep -Milliseconds 2500
         Run-FpsWizardDiff -TargetFPS $script:WizardTargetFPS -Path $script:WizardPath
       } elseif (((Get-Date) - $script:WizardStartTime).TotalMinutes -gt 15) {
         $script:WizardTimer.Stop()
         Add-Activity "FPS Wizard: 15 分鐘 timeout,取消"
-        if ($script:Tray) { $script:Tray.ShowBalloonTip(3000, "FPS Wizard timeout", "15 分鐘沒偵測到 HSR 啟動", 'Warning') }
+        if ($script:Tray) { $script:Tray.ShowBalloonTip(3000, "FPS Wizard timeout", "15 分鐘沒偵測到變化", 'Warning') }
         $script:WizardBaseline = $null
       }
     }
