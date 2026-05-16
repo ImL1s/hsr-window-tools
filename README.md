@@ -162,12 +162,18 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\WindowPatcher\WindowPatcher-WPF.
 **從零到 120 FPS 完整流程 (不需關 HSR,已驗證 E2E)**:
 1. 啟動 tray (`WindowPatcher\WindowPatcher.bat`) — 自動提權 + watch 遊戲 process
 2. 啟動 HSR — tray 約 2 秒內注入 `WS_THICKFRAME + WS_MAXIMIZEBOX`
-3. 右下角托盤 → 右鍵 → **FPS 探查精靈** → 確定建基線 (記下當前 registry 快照)
+3. 右下角托盤 → 右鍵 → **FPS 探查精靈** → 確定建基線
 4. HSR 內: ESC → 設定 → 畫面 → 切換 FPS → ESC 關設定面板 (**不必關遊戲**)
-5. Wizard 每 2 秒 polling registry,偵測 FPS binary 變化 → 自動跳「是否 patch 到 120?」對話框
-6. 點「是」→ registry 寫入 `{"FPS":120,...}` + **自動啟用持續守護**
-7. **持續守護**: 之後 HSR 若動其他設定把 FPS 寫回 30/60,主 DispatcherTimer 2 秒內自動 re-patch 回 120
+5. Wizard 偵測 FPS binary 變化 → 跳「是否 patch 到 120?」對話框 → 點「是」
+6. **第二個 dialog 問是否啟動「持續守護」** (opt-in, 預設不啟動):
+   - **是** → 之後 HSR 動其他設定若把 FPS 寫回,工具 2 秒內 re-patch 回 120
+   - **否** → 只 patch 這一次, 後續手動調整不被覆寫
+7. 隨時可從 tray 右鍵選單 **「持續守護: 啟動/停止」** 切換
 8. 重啟 HSR — 遊戲讀 `{"FPS":120}` → 跑 120 FPS
+
+**如何停止持續守護** (若想手動調 HSR FPS 不被覆寫):
+- 右下角托盤右鍵 → **「持續守護: 停止」** (config 寫回 fpsTarget=0)
+- 或開「管理目標」→ 編輯 StarRail target → fpsProfile = "none"
 
 FPS tweak 預設不啟用 (`fpsProfile = "none"`, `fpsTarget = 0`) 是為了避免「找不到 key」噪音 — 透過托盤選單的 **FPS 探查精靈** 或 `WindowPatcher\RegProbe.ps1` 主動開啟即可。
 

@@ -678,24 +678,40 @@ function Run-FpsWizardDiff {
     if ($r -eq 'Yes') {
       $patched = Apply-FpsCandidates -Candidates $candidates -TargetFPS $TargetFPS -Path $Path
       Add-Activity "FPS Wizard: 已 patch $patched 個 key → $TargetFPS"
-      # 自動啟用 config FPS protect:
-      # HSR 之後若再動其他設定會把 registry 寫回原 FPS,主 DispatcherTimer 會偵測並 re-patch
-      $autoEnabled = $false
-      foreach ($t in $script:Config.targets) {
-        if ($t.processName -eq 'StarRail' -and ($t.fpsTarget -lt $TargetFPS -or $t.fpsProfile -eq 'none')) {
-          $t.fpsTarget = $TargetFPS
-          $t.fpsProfile = 'unity_cognosphere_starrail'
-          $autoEnabled = $true
+      if ($script:Tray) { $script:Tray.ShowBalloonTip(4000, "FPS 已寫入", "patched $patched 個 key → $TargetFPS FPS", 'Info') }
+
+      # Patch 成功才問是否啟動持續守護 (使用者明確 opt-in,可隨時從 tray menu 停止)
+      if ($patched -gt 0) {
+        $needsEnable = $false
+        foreach ($t in $script:Config.targets) {
+          if ($t.processName -eq 'StarRail' -and ($t.fpsTarget -lt $TargetFPS -or $t.fpsProfile -eq 'none')) {
+            $needsEnable = $true; break
+          }
         }
+        if ($needsEnable) {
+          $guardMsg = "已 patch FPS=$TargetFPS。`n`n是否啟動「持續守護」?`n`n" +
+                      "是 = 之後 HSR 動其他設定若把 FPS 寫回 30/60,工具會 2 秒內 re-patch 回 $TargetFPS`n" +
+                      "否 = 只 patch 這一次,使用者後續手動調整 FPS 不被覆寫`n`n" +
+                      "之後可從 tray 右鍵選單「持續守護: 啟動/停止」隨時切換。"
+          $g = [System.Windows.MessageBox]::Show($guardMsg, "啟動持續守護?", 'YesNo', 'Question')
+          if ($g -eq 'Yes') {
+            foreach ($t in $script:Config.targets) {
+              if ($t.processName -eq 'StarRail') {
+                $t.fpsTarget = $TargetFPS
+                $t.fpsProfile = 'unity_cognosphere_starrail'
+              }
+            }
+            Save-Config $script:Config
+            Add-Activity "★ 已啟動持續守護 (fpsTarget=$TargetFPS) — 可從 tray menu 隨時停止"
+            [System.Windows.MessageBox]::Show("持續守護已啟動。`n`n停止方法:右下角托盤右鍵 → 持續守護:停止", "守護已啟動", 'OK', 'Information') | Out-Null
+          } else {
+            Add-Activity "Wizard: 使用者選擇只 patch 一次,不啟動持續守護"
+          }
+        }
+      } else {
+        Add-Activity "Wizard: Apply-FpsCandidates 回傳 0 patched, 不啟用守護"
+        [System.Windows.MessageBox]::Show("沒成功 patch 任何 key (Apply-FpsCandidates 回傳 0)`n`n可能原因: registry binary 無法寫入,或 FPS pattern 未匹配", "Wizard 部分失敗", 'OK', 'Warning') | Out-Null
       }
-      if ($autoEnabled) {
-        Save-Config $script:Config
-        Add-Activity "已啟用持續守護 (fpsTarget=$TargetFPS): HSR 若再動設定寫回 FPS,工具 2 秒內自動 re-patch"
-      }
-      if ($script:Tray) { $script:Tray.ShowBalloonTip(4000, "FPS 已寫入", "patched $patched 個 key → $TargetFPS FPS;持續守護已啟動", 'Info') }
-      $msg = "完成 — 已 patch $patched 個 key → $TargetFPS FPS。`n備份在 $script:ConfigDir`n`n"
-      if ($autoEnabled) { $msg += "★ 已啟用「持續守護」: 之後動 HSR 其他設定也不會跑掉,工具會 2 秒內 re-patch。" }
-      [System.Windows.MessageBox]::Show($msg, "Wizard 完成", 'OK', 'Information') | Out-Null
     }
   } else {
     $summary += "沒找到明顯 FPS 候選。可能:`n  • 等 2-3 秒讓 HSR flush registry 後再試`n  • FPS 設定不在此 path`n`n變更 keys (前 5):`n"
@@ -1651,6 +1667,35 @@ $menu.Items.Add("立即掃描修補").add_Click({
 })
 $menu.Items.Add("管理目標...").add_Click({ Show-SettingsWPF })
 $menu.Items.Add("FPS 探查精靈 (HSR 解鎖到 120 FPS)...").add_Click({ Start-FpsWizard -TargetFPS 120 -Path 'HKCU:\Software\Cognosphere\Star Rail' })
+# 持續守護 toggle: 動態看 config 顯示啟動 / 停止
+$itemGuard = New-Object System.Windows.Forms.ToolStripMenuItem
+function Refresh-GuardItem {
+  $hsr = $script:Config.targets | Where-Object { $_.processName -eq 'StarRail' } | Select-Object -First 1
+  $on = $hsr -and $hsr.fpsTarget -gt 0 -and $hsr.fpsProfile -like 'unity_*'
+  $script:itemGuard.Text = if ($on) { "持續守護: 停止 (fpsTarget=$($hsr.fpsTarget))" } else { "持續守護: 啟動" }
+}
+$script:itemGuard = $itemGuard
+Refresh-GuardItem
+$itemGuard.add_Click({
+  $hsr = $script:Config.targets | Where-Object { $_.processName -eq 'StarRail' } | Select-Object -First 1
+  if (-not $hsr) { return }
+  $on = $hsr.fpsTarget -gt 0 -and $hsr.fpsProfile -like 'unity_*'
+  if ($on) {
+    $hsr.fpsTarget = 0
+    $hsr.fpsProfile = 'none'
+    Save-Config $script:Config
+    Add-Activity "★ 持續守護已停止 — 使用者手動調 HSR FPS 不再被覆寫"
+    if ($script:Tray) { $script:Tray.ShowBalloonTip(2500, "持續守護已停止", "之後 HSR 動 FPS 設定工具不再覆寫", 'Info') }
+  } else {
+    $hsr.fpsTarget = 120
+    $hsr.fpsProfile = 'unity_cognosphere_starrail'
+    Save-Config $script:Config
+    Add-Activity "★ 持續守護已啟動 — fpsTarget=120,registry 寫回會被 2 秒內 re-patch"
+    if ($script:Tray) { $script:Tray.ShowBalloonTip(2500, "持續守護已啟動", "HSR 動其他設定後 FPS 會自動 re-patch 回 120", 'Info') }
+  }
+  Refresh-GuardItem
+})
+$menu.Items.Add($itemGuard) | Out-Null
 $menu.Items.Add('-') | Out-Null
 $menu.Items.Add("開啟 log").add_Click({ Start-Process notepad.exe $script:LogPath })
 $menu.Items.Add("開啟設定資料夾").add_Click({ Start-Process explorer.exe $script:ConfigDir })
