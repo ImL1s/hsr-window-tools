@@ -619,6 +619,23 @@ function Apply-FpsCandidates {
   return $n
 }
 
+function Test-WizardDiffHasFps {
+  # 純函式: 比對 baseline 與 current snapshot,回傳是否有 binary key 含 FPS 字串的新增/變更
+  # 抽出來方便 Pester unit test
+  param([hashtable]$Baseline, [hashtable]$Current)
+  $fpsPattern = '"FPS"|"fps"|TargetFrameRate|MaxFPS|FrameRate'
+  foreach ($k in $Current.Keys) {
+    $info = $Current[$k]
+    if ($info.type -ne 'binary') { continue }
+    if (-not $Baseline.ContainsKey($k)) {
+      if ($info.text -match $fpsPattern) { return $true }
+    } elseif ($Baseline[$k].type -eq 'binary' -and $info.bytes_hex -ne $Baseline[$k].bytes_hex) {
+      if ($info.text -match $fpsPattern) { return $true }
+    }
+  }
+  return $false
+}
+
 function Run-FpsWizardDiff {
   param([int]$TargetFPS, [string]$Path)
   $current = Snapshot-Reg $Path
@@ -702,7 +719,7 @@ function Start-FpsWizard {
   $script:WizardSeen = $false
   $script:WizardStartTime = Get-Date
   Add-Activity "FPS Wizard 啟動 (已記下 $($script:WizardBaseline.Count) keys 當基準)"
-  Add-Activity "下一步: 進 HSR → ESC → 設定 → 畫面 → 切換 FPS → 完整關閉 HSR 遊戲"
+  Add-Activity "下一步: 進 HSR → ESC → 設定 → 畫面 → 切換 FPS → ESC 關設定面板 (不必關遊戲)"
   if ($script:Tray) { $script:Tray.ShowBalloonTip(4000, "FPS Wizard 已啟動", "在 HSR 內動 FPS 設定後完整關閉 HSR,我會自動 diff + patch 到 $TargetFPS", 'Info') }
 
   $script:WizardTimer = New-Object System.Windows.Threading.DispatcherTimer
@@ -712,22 +729,7 @@ function Start-FpsWizard {
     #    HSR 在 ESC 關設定面板時就會 flush registry,使用者不必完整關閉遊戲
     try {
       $current = Snapshot-Reg $script:WizardPath
-      $foundFpsChange = $false
-      foreach ($k in $current.Keys) {
-        $info = $current[$k]
-        if (-not $script:WizardBaseline.ContainsKey($k)) {
-          # 新增 key
-          if ($info.type -eq 'binary' -and $info.text -match '"FPS"|"fps"|TargetFrameRate|MaxFPS|FrameRate') {
-            $foundFpsChange = $true; break
-          }
-        } elseif ($info.type -eq 'binary' -and $script:WizardBaseline[$k].type -eq 'binary' -and $info.bytes_hex -ne $script:WizardBaseline[$k].bytes_hex) {
-          # 變更 binary key 且含 FPS
-          if ($info.text -match '"FPS"|"fps"|TargetFrameRate|MaxFPS|FrameRate') {
-            $foundFpsChange = $true; break
-          }
-        }
-      }
-      if ($foundFpsChange) {
+      if (Test-WizardDiffHasFps -Baseline $script:WizardBaseline -Current $current) {
         $script:WizardTimer.Stop()
         Add-Activity "偵測到 registry 內 FPS 欄位變化 — 立即 diff + patch (不需等 HSR 關閉)"
         Run-FpsWizardDiff -TargetFPS $script:WizardTargetFPS -Path $script:WizardPath

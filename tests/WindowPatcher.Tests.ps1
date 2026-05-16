@@ -74,6 +74,77 @@ Describe "Has-UnsavedChanges JSON 比對邏輯" {
   }
 }
 
+Describe "Test-WizardDiffHasFps polling 邏輯" {
+  BeforeAll {
+    # Inline 同樣的函式定義 (跟主檔一致),測純邏輯
+    function Test-WizardDiffHasFps {
+      param([hashtable]$Baseline, [hashtable]$Current)
+      $fpsPattern = '"FPS"|"fps"|TargetFrameRate|MaxFPS|FrameRate'
+      foreach ($k in $Current.Keys) {
+        $info = $Current[$k]
+        if ($info.type -ne 'binary') { continue }
+        if (-not $Baseline.ContainsKey($k)) {
+          if ($info.text -match $fpsPattern) { return $true }
+        } elseif ($Baseline[$k].type -eq 'binary' -and $info.bytes_hex -ne $Baseline[$k].bytes_hex) {
+          if ($info.text -match $fpsPattern) { return $true }
+        }
+      }
+      return $false
+    }
+  }
+
+  It "baseline 為空, current 含 FPS binary → 返回 true (新增 case)" {
+    $baseline = @{}
+    $current = @{
+      'GraphicsSettings_Model_h99999' = @{ type='binary'; text='{"FPS":60}'; bytes_hex='AABBCC' }
+    }
+    Test-WizardDiffHasFps -Baseline $baseline -Current $current | Should -Be $true
+  }
+
+  It "baseline 含 FPS:60 binary, current 改成 FPS:120 → 返回 true (變更 case)" {
+    $baseline = @{
+      'GraphicsSettings_Model_h99999' = @{ type='binary'; text='{"FPS":60}'; bytes_hex='AABBCC' }
+    }
+    $current = @{
+      'GraphicsSettings_Model_h99999' = @{ type='binary'; text='{"FPS":120}'; bytes_hex='DDEEFF' }
+    }
+    Test-WizardDiffHasFps -Baseline $baseline -Current $current | Should -Be $true
+  }
+
+  It "新增 binary 但不含 FPS 字串 → 返回 false (FPS pattern 過濾)" {
+    $baseline = @{}
+    $current = @{
+      'SomeOtherKey_h12345' = @{ type='binary'; text='{"name":"value"}'; bytes_hex='AABBCC' }
+    }
+    Test-WizardDiffHasFps -Baseline $baseline -Current $current | Should -Be $false
+  }
+
+  It "baseline 跟 current 相同 → 返回 false (無變化)" {
+    $shared = @{
+      'GraphicsSettings_Model_h99999' = @{ type='binary'; text='{"FPS":60}'; bytes_hex='AABBCC' }
+    }
+    Test-WizardDiffHasFps -Baseline $shared -Current $shared | Should -Be $false
+  }
+
+  It "DWORD (非 binary) 新增不該觸發 (避免 GraphicsQuality 等誤判)" {
+    $baseline = @{}
+    $current = @{
+      'GraphicsSettings_GraphicsQuality_h523255858' = @{ type='Int32'; value='4' }
+    }
+    Test-WizardDiffHasFps -Baseline $baseline -Current $current | Should -Be $false
+  }
+
+  It "新增多個 key 其中一個含 FPS → 返回 true" {
+    $baseline = @{}
+    $current = @{
+      'NoiseKey_h1' = @{ type='binary'; text='{"x":1}'; bytes_hex='AA' }
+      'GraphicsSettings_Model_h99999' = @{ type='binary'; text='{"FPS":60}'; bytes_hex='BB' }
+      'NoiseKey_h2' = @{ type='binary'; text='{"y":2}'; bytes_hex='CC' }
+    }
+    Test-WizardDiffHasFps -Baseline $baseline -Current $current | Should -Be $true
+  }
+}
+
 Describe "Wizard end-to-end (dummy registry)" {
   BeforeAll { $script:TestPath = 'HKCU:\Software\WindowPatcherCITest' }
   AfterAll { Remove-Item $script:TestPath -Recurse -Force -EA SilentlyContinue }
