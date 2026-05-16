@@ -267,10 +267,10 @@ if (-not $isAdmin) {
     Start-Process pwsh -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',$PSCommandPath -Verb RunAs -ErrorAction Stop
   } catch [System.ComponentModel.Win32Exception] {
     Add-Type -AssemblyName System.Windows.Forms
-    [System.Windows.Forms.MessageBox]::Show("需要管理員權限才能修補遊戲視窗。`n`n你剛剛在 UAC 對話框按了「否」。`n`n請重新雙擊圖示，並在 UAC 詢問時點「是」。", "需要管理員權限", 'OK', 'Warning') | Out-Null
+    [System.Windows.Forms.MessageBox]::Show($script:Lang.error_admin_required_body, $script:Lang.error_admin_required_title, 'OK', 'Warning') | Out-Null
   } catch {
     Add-Type -AssemblyName System.Windows.Forms
-    [System.Windows.Forms.MessageBox]::Show("啟動失敗:`n$($_.Exception.Message)", "錯誤", 'OK', 'Error') | Out-Null
+    [System.Windows.Forms.MessageBox]::Show(($script:Lang.error_startup_failed_body -f $_.Exception.Message), $script:Lang.error_startup_failed_title, 'OK', 'Error') | Out-Null
   }
   exit
 }
@@ -279,7 +279,7 @@ if (-not $isAdmin) {
 $script:Mutex = New-Object System.Threading.Mutex($false, 'Global\WindowPatcher')
 if (-not $script:Mutex.WaitOne(0, $false)) {
   Add-Type -AssemblyName System.Windows.Forms
-  [System.Windows.Forms.MessageBox]::Show("視窗修補器已經在執行中。`n`n請從右下角托盤圖示開啟設定。", "已啟動", 'OK', 'Information') | Out-Null
+  [System.Windows.Forms.MessageBox]::Show($script:Lang.error_already_running_body, $script:Lang.error_already_running_title, 'OK', 'Information') | Out-Null
   exit
 }
 
@@ -529,7 +529,7 @@ function Patch-Process {
     if ($after -eq $new) {
       $script:PatchedHandles[[int64]$h] = Get-Date
       Log "Patched '$($Target.name)' PID=$($Proc.Id) 0x$('{0:X8}' -f $cur)->0x$('{0:X8}' -f $after)"
-      Add-Activity "視窗已修補 — $($Target.name) (現可拖曳邊框)"
+      Add-Activity ($script:Lang.activity_window_patched -f $Target.name)
       return $true
     }
   } catch { Log "Patch err: $_" 'ERROR' }
@@ -565,7 +565,7 @@ function Patch-FPS {
     if (-not $last -or ($now - $last).TotalMinutes -ge 5) {
       $script:FpsPendingNotified[$pendKey] = $now
       Log "FPS: no key match $keyPattern in $regPath (節流 5min)" 'WARN'
-      Add-Activity "FPS 等待中 — $($Target.name): 進遊戲設定 → 圖形 → 任意動一個選項按儲存,鍵生成後自動解鎖"
+      Add-Activity ($script:Lang.activity_fps_waiting -f $Target.name)
     }
     return $false
   }
@@ -595,10 +595,10 @@ function Patch-FPS {
       while ($newBytes.Length -lt $bytes.Length) { $newBytes += [byte]0 }
       Set-ItemProperty -Path $regPath -Name $key -Value $newBytes -Type Binary
       Log "FPS patched '$($Target.name)' ${key}: $oldFps -> $($Target.fpsTarget)"
-      Add-Activity "FPS 已解鎖 — $($Target.name) $oldFps → $($Target.fpsTarget)"
+      Add-Activity ($script:Lang.activity_fps_unlocked -f $Target.name, $oldFps, $Target.fpsTarget)
       # 即時 toast 通知 (使用者立即知道生效)
       if ($script:Tray -and $script:Config.showNotifications) {
-        try { $script:Tray.ShowBalloonTip(3000, "FPS 已解鎖", "$($Target.name): $oldFps → $($Target.fpsTarget) FPS", 'Info') } catch {}
+        try { $script:Tray.ShowBalloonTip(3000, $script:Lang.balloon_fps_unlocked_title, ($script:Lang.balloon_fps_unlocked_body -f $Target.name, $oldFps, $Target.fpsTarget), 'Info') } catch {}
       }
       $script:FpsPatchedKeys[$cacheKey] = Get-Date
       $any = $true
@@ -725,13 +725,13 @@ function Build-WizardSummary {
   # 純函式:把 diff 結構轉成使用者看的 dialog 字串
   param([hashtable]$Diff, [int]$TargetFPS)
   $added = $Diff.added; $changed = $Diff.changed; $candidates = $Diff.candidates
-  $summary = "本次掃描結果`n  新增 key: $($added.Count)`n  變更 key: $($changed.Count)`n`n"
+  $summary = ($script:Lang.wizard_summary_header -f $added.Count, $changed.Count)
   if ($candidates.Count -gt 0) {
-    $summary += "★ 找到 $($candidates.Count) 個 FPS 候選:`n"
+    $summary += ($script:Lang.wizard_summary_found_prefix -f $candidates.Count)
     foreach ($c in $candidates) { $summary += "    $($c.key)`n" }
-    $summary += "`n是否現在寫入 $TargetFPS FPS patch?"
+    $summary += ($script:Lang.wizard_summary_apply_prompt -f $TargetFPS)
   } else {
-    $summary += "沒找到明顯 FPS 候選。可能:`n  • 等 2-3 秒讓 HSR flush registry 後再試`n  • FPS 設定不在此 path`n`n變更 keys (前 5):`n"
+    $summary += $script:Lang.wizard_summary_no_candidate
     foreach ($c in ($changed | Select-Object -First 5)) { $summary += "  ~ $($c.key)`n" }
     foreach ($k in ($added | Select-Object -First 5)) { $summary += "  + $k`n" }
   }
@@ -750,11 +750,8 @@ function Prompt-EnableGuard {
     }
   }
   if (-not $needsEnable) { return }
-  $guardMsg = "已 patch FPS=$TargetFPS。`n`n是否啟動「持續守護」?`n`n" +
-              "是 = 之後 HSR 動其他設定若把 FPS 寫回 30/60,工具會 2 秒內 re-patch 回 $TargetFPS`n" +
-              "否 = 只 patch 這一次,使用者後續手動調整 FPS 不被覆寫`n`n" +
-              "之後可從 tray 右鍵選單「持續守護: 啟動/停止」隨時切換。"
-  $g = [System.Windows.MessageBox]::Show($guardMsg, "啟動持續守護?", 'YesNo', 'Question')
+  $guardMsg = $script:Lang.guard_prompt_body -f $TargetFPS
+  $g = [System.Windows.MessageBox]::Show($guardMsg, $script:Lang.guard_prompt_title, 'YesNo', 'Question')
   if ($g -eq 'Yes') {
     foreach ($t in $cfg.targets) {
       if ($t.processName -eq 'StarRail') {
@@ -763,10 +760,10 @@ function Prompt-EnableGuard {
       }
     }
     Save-Config $cfg
-    Add-Activity "★ 已啟動持續守護 (fpsTarget=$TargetFPS) — 可從 tray menu 隨時停止"
-    [System.Windows.MessageBox]::Show("持續守護已啟動。`n`n停止方法:右下角托盤右鍵 → 持續守護:停止", "守護已啟動", 'OK', 'Information') | Out-Null
+    Add-Activity ($script:Lang.activity_guard_enabled -f $TargetFPS)
+    [System.Windows.MessageBox]::Show($script:Lang.guard_enabled_body, $script:Lang.guard_enabled_title, 'OK', 'Information') | Out-Null
   } else {
-    Add-Activity "Wizard: 使用者選擇只 patch 一次,不啟動持續守護"
+    Add-Activity $script:Lang.activity_guard_decline
   }
 }
 
@@ -778,21 +775,21 @@ function Run-FpsWizardDiff {
   $summary = Build-WizardSummary -Diff $diff -TargetFPS $TargetFPS
 
   if ($diff.candidates.Count -gt 0) {
-    $r = [System.Windows.MessageBox]::Show($summary, "FPS Wizard 結果", 'YesNo', 'Question')
+    $r = [System.Windows.MessageBox]::Show($summary, $script:Lang.wizard_result_title, 'YesNo', 'Question')
     if ($r -eq 'Yes') {
       $patched = Apply-FpsCandidates -Candidates $diff.candidates -TargetFPS $TargetFPS -Path $Path
-      Add-Activity "FPS Wizard: 已 patch $patched 個 key → $TargetFPS"
-      if ($script:Tray) { $script:Tray.ShowBalloonTip(4000, "FPS 已寫入", "patched $patched 個 key → $TargetFPS FPS", 'Info') }
+      Add-Activity ($script:Lang.activity_wizard_patched -f $patched, $TargetFPS)
+      if ($script:Tray) { $script:Tray.ShowBalloonTip(4000, $script:Lang.balloon_fps_patched_title, ($script:Lang.balloon_fps_patched_body -f $patched, $TargetFPS), 'Info') }
       if ($patched -gt 0) {
         Prompt-EnableGuard -TargetFPS $TargetFPS
       } else {
-        Add-Activity "Wizard: Apply-FpsCandidates 回傳 0 patched, 不啟用守護"
-        [System.Windows.MessageBox]::Show("沒成功 patch 任何 key (Apply-FpsCandidates 回傳 0)`n`n可能原因: registry binary 無法寫入,或 FPS pattern 未匹配", "Wizard 部分失敗", 'OK', 'Warning') | Out-Null
+        Add-Activity $script:Lang.activity_wizard_zero
+        [System.Windows.MessageBox]::Show($script:Lang.wizard_partial_fail_body, $script:Lang.wizard_partial_fail_title, 'OK', 'Warning') | Out-Null
       }
     }
   } else {
-    Add-Activity "FPS Wizard: 沒找到 FPS 候選 (新增 $($diff.added.Count), 變更 $($diff.changed.Count))"
-    [System.Windows.MessageBox]::Show($summary, "FPS Wizard 無結果", 'OK', 'Warning') | Out-Null
+    Add-Activity ($script:Lang.activity_wizard_no_candidate -f $diff.added.Count, $diff.changed.Count)
+    [System.Windows.MessageBox]::Show($summary, $script:Lang.wizard_no_result_title, 'OK', 'Warning') | Out-Null
   }
   $script:WizardBaseline = $null
 }
@@ -800,22 +797,15 @@ function Run-FpsWizardDiff {
 function Start-FpsWizard {
   param([int]$TargetFPS = 120, [string]$Path = 'HKCU:\Software\Cognosphere\Star Rail')
   if ($script:WizardTimer -and $script:WizardTimer.IsEnabled) {
-    [System.Windows.MessageBox]::Show("FPS Wizard 已在執行中,請先讓它完成或重啟工具", "進行中", 'OK', 'Warning') | Out-Null
+    [System.Windows.MessageBox]::Show($script:Lang.wizard_running_body, $script:Lang.wizard_running_title, 'OK', 'Warning') | Out-Null
     return
   }
-  $msg = "FPS 探查精靈 (實驗性)`n`n" +
-         "步驟:`n" +
-         "  1. 我會為 $Path 建立 registry 基線`n" +
-         "  2. 你進 HSR → ESC → 設定 → 畫面`n" +
-         "  3. 切換 FPS (60 → 30 套用 → 60 套用)`n" +
-         "  4. ESC 離開設定面板 (不必關遊戲) — 工具會 2 秒內自動偵測`n" +
-         "  5. 我自動 diff + 找 FPS key + patch 到 $TargetFPS`n`n" +
-         "是否開始?"
-  $r = [System.Windows.MessageBox]::Show($msg, "FPS 探查精靈", 'OKCancel', 'Information')
+  $msg = $script:Lang.wizard_start_body -f $TargetFPS
+  $r = [System.Windows.MessageBox]::Show($msg, $script:Lang.wizard_start_title, 'OKCancel', 'Information')
   if ($r -ne 'OK') { return }
 
   if (-not (Test-Path $Path)) {
-    [System.Windows.MessageBox]::Show("Registry 路徑不存在: $Path", "錯誤", 'OK', 'Error') | Out-Null
+    [System.Windows.MessageBox]::Show(($script:Lang.wizard_reg_missing_body -f $Path), $script:Lang.wizard_reg_missing_title, 'OK', 'Error') | Out-Null
     return
   }
 
@@ -824,9 +814,9 @@ function Start-FpsWizard {
   $script:WizardPath = $Path
   $script:WizardSeen = $false
   $script:WizardStartTime = Get-Date
-  Add-Activity "FPS Wizard 啟動 (已記下 $($script:WizardBaseline.Count) keys 當基準)"
-  Add-Activity "下一步: 進 HSR → ESC → 設定 → 畫面 → 切換 FPS → ESC 關設定面板 (不必關遊戲)"
-  if ($script:Tray) { $script:Tray.ShowBalloonTip(4000, "FPS Wizard 已啟動", "在 HSR 動 FPS 設定 + ESC 關面板後 (不必關遊戲),我會自動 diff + patch 到 $TargetFPS", 'Info') }
+  Add-Activity ($script:Lang.activity_wizard_started -f $script:WizardBaseline.Count)
+  Add-Activity $script:Lang.activity_wizard_hint
+  if ($script:Tray) { $script:Tray.ShowBalloonTip(4000, $script:Lang.balloon_wizard_started_title, ($script:Lang.balloon_wizard_started_body -f $TargetFPS), 'Info') }
 
   $script:WizardTimer = New-Object System.Windows.Threading.DispatcherTimer
   $script:WizardTimer.Interval = [TimeSpan]::FromSeconds(2)
@@ -837,7 +827,7 @@ function Start-FpsWizard {
       $current = Snapshot-Reg $script:WizardPath
       if (Test-WizardDiffHasFps -Baseline $script:WizardBaseline -Current $current) {
         $script:WizardTimer.Stop()
-        Add-Activity "偵測到 registry 內 FPS 欄位變化 — 立即 diff + patch (不需等 HSR 關閉)"
+        Add-Activity $script:Lang.activity_reg_diff_detected
         Run-FpsWizardDiff -TargetFPS $script:WizardTargetFPS -Path $script:WizardPath
         return
       }
@@ -848,18 +838,18 @@ function Start-FpsWizard {
     if ($proc) {
       if (-not $script:WizardSeen) {
         $script:WizardSeen = $true
-        Add-Activity "偵測到 HSR (PID $($proc.Id)) — 在 HSR 改 FPS 設定 + ESC 關設定面板後我會立即偵測 (不必關遊戲)"
+        Add-Activity ($script:Lang.activity_hsr_detected -f $proc.Id)
       }
     } else {
       if ($script:WizardSeen) {
         $script:WizardTimer.Stop()
-        Add-Activity "HSR 已關閉 — 強制 diff 看是否有變化"
+        Add-Activity $script:Lang.activity_hsr_closed
         Start-Sleep -Milliseconds 2500
         Run-FpsWizardDiff -TargetFPS $script:WizardTargetFPS -Path $script:WizardPath
       } elseif (((Get-Date) - $script:WizardStartTime).TotalMinutes -gt 15) {
         $script:WizardTimer.Stop()
-        Add-Activity "FPS Wizard: 15 分鐘 timeout,取消"
-        if ($script:Tray) { $script:Tray.ShowBalloonTip(3000, "FPS Wizard timeout", "15 分鐘沒偵測到變化", 'Warning') }
+        Add-Activity $script:Lang.activity_wizard_timeout
+        if ($script:Tray) { $script:Tray.ShowBalloonTip(3000, $script:Lang.balloon_wizard_timeout_title, $script:Lang.balloon_wizard_timeout_body, 'Warning') }
         $script:WizardBaseline = $null
       }
     }
@@ -981,7 +971,7 @@ function Add-Activity {
   while ($script:Activities.Count -gt 20) { $script:Activities.RemoveAt($script:Activities.Count - 1) }
   # B2: 同步 ActivityCount 文字 (僅在設定視窗開啟時生效)
   if ($script:ActivityCountLabel) {
-    try { $script:ActivityCountLabel.Text = "($($script:Activities.Count) 筆)" } catch {}
+    try { $script:ActivityCountLabel.Text = ($script:Lang.settings_activity_count_format -f $script:Activities.Count) } catch {}
   }
 }
 
@@ -1243,15 +1233,15 @@ function Show-SettingsWPF {
   $activityCount = $win.FindName('ActivityCount')
   if ($activityCount) {
     $script:ActivityCountLabel = $activityCount
-    $activityCount.Text = "($($script:Activities.Count) 筆)"
+    $activityCount.Text = ($script:Lang.settings_activity_count_format -f $script:Activities.Count)
   }
   $lblStatus = $win.FindName('LblStatus')
   $coll = New-Object System.Collections.ObjectModel.ObservableCollection[psobject]
   function Refresh-Items {
     $coll.Clear()
     foreach ($t in @($draftConfig.targets)) { $coll.Add((Build-Row $t)) | Out-Null }
-    if ($lblStatus) { $lblStatus.Text = "$(@($draftConfig.targets).Count) 個目標 · 已修補 $($script:PatchedHandles.Count) 個視窗" }
-    if ($activityCount) { $activityCount.Text = "($($script:Activities.Count) 筆)" }
+    if ($lblStatus) { $lblStatus.Text = ($script:Lang.settings_status_format -f @($draftConfig.targets).Count, $script:PatchedHandles.Count) }
+    if ($activityCount) { $activityCount.Text = ($script:Lang.settings_activity_count_format -f $script:Activities.Count) }
   }
   function Sync-RowsToDraft {
     foreach ($row in @($coll)) {
@@ -1292,7 +1282,7 @@ function Show-SettingsWPF {
     # 完整診斷: 對每個 target 顯示真實狀態而不是模糊的「無需修補」
     $enabledTargets = @($script:Config.targets | Where-Object { $_.enabled })
     if ($enabledTargets.Count -eq 0) {
-      [System.Windows.MessageBox]::Show($win, "目前沒有啟用的目標。`n`n請至少啟用一個 (左側勾選方塊)。", "沒有啟用目標", 'OK', 'Warning') | Out-Null
+      [System.Windows.MessageBox]::Show($win, $script:Lang.settings_no_target_body, $script:Lang.settings_no_target_title, 'OK', 'Warning') | Out-Null
       Refresh-Items; return
     }
     $diag = Get-DiagnosticReport -Targets $enabledTargets -PatchResult $r
@@ -1310,7 +1300,7 @@ function Show-SettingsWPF {
   $win.FindName('BtnSave').Add_Click({ Commit-Draft; Save-Config $script:Config; $win.Close() })
   $win.FindName('BtnCancel').Add_Click({
     if (Has-UnsavedChanges) {
-      $r = [System.Windows.MessageBox]::Show($win, "你有未儲存的變更,確定要放棄?`n`n是 = 放棄並關閉`n否 = 繼續編輯", "未儲存", 'YesNo', 'Warning')
+      $r = [System.Windows.MessageBox]::Show($win, $script:Lang.settings_unsaved_discard_body, $script:Lang.settings_unsaved_title, 'YesNo', 'Warning')
       if ($r -ne 'Yes') { return }
     }
     $script:Config = Load-Config
@@ -1320,7 +1310,7 @@ function Show-SettingsWPF {
   $win.Add_Closing({
     param($sender, $e)
     if (Has-UnsavedChanges) {
-      $r = [System.Windows.MessageBox]::Show($win, "你有未儲存的變更,要儲存嗎?`n`n是 = 儲存並關閉`n否 = 不儲存關閉`n取消 = 繼續編輯", "未儲存", 'YesNoCancel', 'Warning')
+      $r = [System.Windows.MessageBox]::Show($win, $script:Lang.settings_unsaved_save_body, $script:Lang.settings_unsaved_title, 'YesNoCancel', 'Warning')
       switch ($r) {
         'Yes'    { Commit-Draft; Save-Config $script:Config }
         'No'     { $script:Config = Load-Config }
@@ -1699,7 +1689,7 @@ function Show-PickerWPF {
 $winIcon = New-PatcherIcon
 $script:Tray = New-Object System.Windows.Forms.NotifyIcon
 $script:Tray.Icon = $winIcon
-$script:Tray.Text = "視窗修補器"
+$script:Tray.Text = $script:Lang.tray_title
 $script:Tray.Visible = $true
 
 # 給 WPF 視窗用 (32x32 大圖)
@@ -1735,12 +1725,12 @@ $itemStatus.ForeColor = [System.Drawing.Color]::FromArgb(107,114,128)
 $menu.Items.Add($itemStatus) | Out-Null
 $menu.Items.Add('-') | Out-Null
 
-$menu.Items.Add("立即掃描修補").add_Click({
+$menu.Items.Add($script:Lang.tray_menu_scan_now).add_Click({
   $r = Scan-And-Patch
-  $script:Tray.ShowBalloonTip(2000, "視窗修補器", "已修補 $($r.style) 個視窗、$($r.fps) 個 FPS 設定", 'Info')
+  $script:Tray.ShowBalloonTip(2000, $script:Lang.balloon_scan_done_title, ($script:Lang.balloon_scan_done_body -f $r.style, $r.fps), 'Info')
 })
-$menu.Items.Add("管理目標...").add_Click({ Show-SettingsWPF })
-$menu.Items.Add("FPS 探查精靈 (HSR 解鎖到 120 FPS)...").add_Click({ Start-FpsWizard -TargetFPS 120 -Path 'HKCU:\Software\Cognosphere\Star Rail' })
+$menu.Items.Add($script:Lang.tray_menu_manage_targets).add_Click({ Show-SettingsWPF })
+$menu.Items.Add($script:Lang.tray_menu_fps_wizard).add_Click({ Start-FpsWizard -TargetFPS 120 -Path 'HKCU:\Software\Cognosphere\Star Rail' })
 # 持續守護 toggle: 動態看 config 顯示啟動 / 停止
 $itemGuard = New-Object System.Windows.Forms.ToolStripMenuItem
 function Refresh-GuardItem {
@@ -1758,21 +1748,21 @@ $itemGuard.add_Click({
     $hsr.fpsTarget = 0
     $hsr.fpsProfile = 'none'
     Save-Config $script:Config
-    Add-Activity "★ 持續守護已停止 — 使用者手動調 HSR FPS 不再被覆寫"
-    if ($script:Tray) { $script:Tray.ShowBalloonTip(2500, "持續守護已停止", "之後 HSR 動 FPS 設定工具不再覆寫", 'Info') }
+    Add-Activity $script:Lang.activity_guard_disabled_user
+    if ($script:Tray) { $script:Tray.ShowBalloonTip(2500, $script:Lang.balloon_guard_stopped_title, $script:Lang.balloon_guard_stopped_body, 'Info') }
   } else {
     $hsr.fpsTarget = 120
     $hsr.fpsProfile = 'unity_cognosphere_starrail'
     Save-Config $script:Config
-    Add-Activity "★ 持續守護已啟動 — fpsTarget=120,registry 寫回會被 2 秒內 re-patch"
-    if ($script:Tray) { $script:Tray.ShowBalloonTip(2500, "持續守護已啟動", "HSR 動其他設定後 FPS 會自動 re-patch 回 120", 'Info') }
+    Add-Activity $script:Lang.activity_guard_enabled_user
+    if ($script:Tray) { $script:Tray.ShowBalloonTip(2500, $script:Lang.balloon_guard_started_title, $script:Lang.balloon_guard_started_body, 'Info') }
   }
   Refresh-GuardItem
 })
 $menu.Items.Add($itemGuard) | Out-Null
 $menu.Items.Add('-') | Out-Null
-$menu.Items.Add("開啟 log").add_Click({ Start-Process notepad.exe $script:LogPath })
-$menu.Items.Add("開啟設定資料夾").add_Click({ Start-Process explorer.exe $script:ConfigDir })
+$menu.Items.Add($script:Lang.tray_menu_open_log).add_Click({ Start-Process notepad.exe $script:LogPath })
+$menu.Items.Add($script:Lang.tray_menu_open_config_dir).add_Click({ Start-Process explorer.exe $script:ConfigDir })
 
 # === Language submenu (i18n) ===
 $itemLang = New-Object System.Windows.Forms.ToolStripMenuItem $script:Lang.tray_menu_language
@@ -1805,7 +1795,7 @@ foreach ($kv in $langOpts.GetEnumerator()) {
 $menu.Items.Add($itemLang) | Out-Null
 
 $menu.Items.Add('-') | Out-Null
-$menu.Items.Add("結束").add_Click({
+$menu.Items.Add($script:Lang.tray_menu_exit).add_Click({
   $script:Tray.Visible = $false; $script:Tray.Dispose()
   [System.Windows.Application]::Current.Shutdown()
 })
@@ -1824,7 +1814,7 @@ $script:Timer.Add_Tick({
   # B1: try/catch 包裝避免 tray menu disposed 後 crash
   try {
     if ($w -eq 0 -and $f -eq 0) {
-      $itemStatus.Text = "等待目標程式啟動..."
+      $itemStatus.Text = $script:Lang.tray_status_waiting
     } else {
       $parts = @()
       if ($w -gt 0) { $parts += "$w 個視窗已修補" }
@@ -1920,7 +1910,7 @@ if (-not (Test-Path $welcomeFlag)) {
   } catch { Log "Welcome modal failed: $_" 'WARN' }
 }
 
-$script:Tray.ShowBalloonTip(2500, "視窗修補器", "已啟動 (托盤右下角)", 'Info')
+$script:Tray.ShowBalloonTip(2500, $script:Lang.tray_title, $script:Lang.balloon_app_started_body, 'Info')
 
 $app = New-Object System.Windows.Application
 $app.ShutdownMode = [System.Windows.ShutdownMode]::OnExplicitShutdown

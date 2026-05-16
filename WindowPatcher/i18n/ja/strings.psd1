@@ -25,7 +25,7 @@
 
     # === Wizard ===
     wizard_start_title     = 'FPS ウィザード'
-    wizard_start_body      = "FPS ウィザードは HSR がレジストリに書き込む内容を「現在」と「変更後」で比較します。`n`n次の手順:`n  1) 「OK」をクリックしてベースラインスナップショットを作成`n  2) HSR で 設定 -> 画面 -> 任意のオプションを変更 -> ESC で設定パネルを閉じる`n  3) FPS フィールドの変化を検出すると、120 にパッチするか確認のダイアログが表示されます`n`nHSR を閉じる必要はありません。所要時間は約 5-30 秒。"
+    wizard_start_body      = "FPS ウィザードは HSR がレジストリに書き込む内容を「現在」と「変更後」で比較します。`n`n次の手順:`n  1) 「OK」をクリックしてベースラインスナップショットを作成`n  2) HSR で 設定 -> 画面 -> 任意のオプションを変更 -> ESC で設定パネルを閉じる`n  3) FPS フィールドの変化を検出すると、{0} にパッチするか確認のダイアログが表示されます`n`nHSR を閉じる必要はありません。所要時間は約 5-30 秒。"
     wizard_reg_missing_title = 'エラー'
     wizard_reg_missing_body  = 'レジストリパスが見つかりません: {0}'
     wizard_running_title   = '実行中'
@@ -75,8 +75,21 @@
     activity_wizard_timeout     = 'FPS ウィザード: 15 分タイムアウト、キャンセル'
 
     # === Balloon notifications ===
-    balloon_fps_patched_title = 'FPS パッチ済み'
-    balloon_fps_patched_body  = '{0} 個の key をパッチ → {1} FPS'
+    balloon_fps_patched_title    = 'FPS パッチ済み'
+    balloon_fps_patched_body     = '{0} 個の key をパッチ → {1} FPS'
+    balloon_fps_unlocked_title   = 'FPS 解放済み'
+    balloon_fps_unlocked_body    = '{0}: {1} → {2} FPS'
+    balloon_wizard_started_title = 'FPS ウィザード起動'
+    balloon_wizard_started_body  = 'HSR で FPS 設定変更 + ESC でパネルを閉じた後 (ゲームを閉じる必要なし)、自動的に diff + patch を {0} に実行します'
+    balloon_wizard_timeout_title = 'FPS ウィザード timeout'
+    balloon_wizard_timeout_body  = '15 分間変化を検出できませんでした'
+    balloon_scan_done_title      = 'ウィンドウパッチャー'
+    balloon_scan_done_body       = '{0} ウィンドウ、{1} FPS 設定をパッチ'
+    balloon_guard_stopped_title  = '常時保護が停止'
+    balloon_guard_stopped_body   = 'HSR の FPS 変更は今後上書きされません'
+    balloon_guard_started_title  = '常時保護が有効'
+    balloon_guard_started_body   = 'HSR が他の設定を変更すると FPS は自動的に 120 に再パッチされます'
+    balloon_app_started_body     = '起動済み (右下のトレイ)'
 
     # === Language switch ===
     lang_restart_title = '言語が切り替えられました'

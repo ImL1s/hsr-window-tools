@@ -26,7 +26,7 @@
 
     # === Wizard ===
     wizard_start_title     = 'FPS 探查精靈'
-    wizard_start_body      = "FPS 探查精靈會比對「現在」跟「之後」HSR 寫到 registry 的內容。`n`n下一步:`n  1) 點「確定」建立基準快照`n  2) 在 HSR 進設定 -> 畫面 -> 隨便動一個選項 -> ESC 關設定面板`n  3) 偵測到 FPS 欄位變化後會自動彈窗問是否 patch 到 120`n`n不必關 HSR,過程約 5-30 秒。"
+    wizard_start_body      = "FPS 探查精靈會比對「現在」跟「之後」HSR 寫到 registry 的內容。`n`n下一步:`n  1) 點「確定」建立基準快照`n  2) 在 HSR 進設定 -> 畫面 -> 隨便動一個選項 -> ESC 關設定面板`n  3) 偵測到 FPS 欄位變化後會自動彈窗問是否 patch 到 {0}`n`n不必關 HSR,過程約 5-30 秒。"
     wizard_reg_missing_title = '錯誤'
     wizard_reg_missing_body  = 'Registry 路徑不存在: {0}'
     wizard_running_title   = '進行中'
@@ -76,8 +76,21 @@
     activity_wizard_timeout     = 'FPS Wizard: 15 分鐘 timeout,取消'
 
     # === Balloon notifications ===
-    balloon_fps_patched_title = 'FPS 已寫入'
-    balloon_fps_patched_body  = 'patched {0} 個 key → {1} FPS'
+    balloon_fps_patched_title    = 'FPS 已寫入'
+    balloon_fps_patched_body     = 'patched {0} 個 key → {1} FPS'
+    balloon_fps_unlocked_title   = 'FPS 已解鎖'
+    balloon_fps_unlocked_body    = '{0}: {1} → {2} FPS'
+    balloon_wizard_started_title = 'FPS Wizard 已啟動'
+    balloon_wizard_started_body  = '在 HSR 動 FPS 設定 + ESC 關面板後 (不必關遊戲),我會自動 diff + patch 到 {0}'
+    balloon_wizard_timeout_title = 'FPS Wizard timeout'
+    balloon_wizard_timeout_body  = '15 分鐘沒偵測到變化'
+    balloon_scan_done_title      = '視窗修補器'
+    balloon_scan_done_body       = '已修補 {0} 個視窗、{1} 個 FPS 設定'
+    balloon_guard_stopped_title  = '持續守護已停止'
+    balloon_guard_stopped_body   = '之後 HSR 動 FPS 設定工具不再覆寫'
+    balloon_guard_started_title  = '持續守護已啟動'
+    balloon_guard_started_body   = 'HSR 動其他設定後 FPS 會自動 re-patch 回 120'
+    balloon_app_started_body     = '已啟動 (托盤右下角)'
 
     # === Language switch ===
     lang_restart_title = '語言已切換'

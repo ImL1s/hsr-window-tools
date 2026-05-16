@@ -282,16 +282,18 @@ Describe "Get-WizardDiff (純函式 — 拆 Run-FpsWizardDiff 後可測)" {
 
 Describe "Build-WizardSummary (純函式)" {
   BeforeAll {
+    # 載入真實 zh-TW psd1 給 inline Build-WizardSummary 用 (跟主檔同邏輯,依賴 $script:Lang)
+    $script:Lang = Import-PowerShellDataFile (Join-Path $script:Root 'WindowPatcher\i18n\zh-TW\strings.psd1')
     function Build-WizardSummary {
       param([hashtable]$Diff, [int]$TargetFPS)
       $added = $Diff.added; $changed = $Diff.changed; $candidates = $Diff.candidates
-      $summary = "本次掃描結果`n  新增 key: $($added.Count)`n  變更 key: $($changed.Count)`n`n"
+      $summary = ($script:Lang.wizard_summary_header -f $added.Count, $changed.Count)
       if ($candidates.Count -gt 0) {
-        $summary += "★ 找到 $($candidates.Count) 個 FPS 候選:`n"
+        $summary += ($script:Lang.wizard_summary_found_prefix -f $candidates.Count)
         foreach ($c in $candidates) { $summary += "    $($c.key)`n" }
-        $summary += "`n是否現在寫入 $TargetFPS FPS patch?"
+        $summary += ($script:Lang.wizard_summary_apply_prompt -f $TargetFPS)
       } else {
-        $summary += "沒找到明顯 FPS 候選。可能:`n  • 等 2-3 秒讓 HSR flush registry 後再試`n  • FPS 設定不在此 path`n`n變更 keys (前 5):`n"
+        $summary += $script:Lang.wizard_summary_no_candidate
         foreach ($c in ($changed | Select-Object -First 5)) { $summary += "  ~ $($c.key)`n" }
         foreach ($k in ($added | Select-Object -First 5)) { $summary += "  + $k`n" }
       }

@@ -25,7 +25,7 @@
 
     # === Wizard ===
     wizard_start_title     = 'FPS 마법사'
-    wizard_start_body      = "FPS 마법사는 HSR이 레지스트리에 쓰는 내용을 「현재」와 「변경 후」로 비교합니다.`n`n다음 단계:`n  1) 「확인」을 클릭하여 베이스라인 스냅샷 생성`n  2) HSR에서 설정 -> 화면 -> 임의 옵션 변경 -> ESC로 설정 패널 닫기`n  3) FPS 필드 변경이 감지되면 120으로 패치할지 묻는 대화 상자가 표시됩니다`n`nHSR을 닫을 필요 없습니다. 약 5-30초 소요됩니다."
+    wizard_start_body      = "FPS 마법사는 HSR이 레지스트리에 쓰는 내용을 「현재」와 「변경 후」로 비교합니다.`n`n다음 단계:`n  1) 「확인」을 클릭하여 베이스라인 스냅샷 생성`n  2) HSR에서 설정 -> 화면 -> 임의 옵션 변경 -> ESC로 설정 패널 닫기`n  3) FPS 필드 변경이 감지되면 {0}(으)로 패치할지 묻는 대화 상자가 표시됩니다`n`nHSR을 닫을 필요 없습니다. 약 5-30초 소요됩니다."
     wizard_reg_missing_title = '오류'
     wizard_reg_missing_body  = '레지스트리 경로를 찾을 수 없음: {0}'
     wizard_running_title   = '진행 중'
@@ -75,8 +75,21 @@
     activity_wizard_timeout     = 'FPS 마법사: 15분 timeout, 취소'
 
     # === Balloon notifications ===
-    balloon_fps_patched_title = 'FPS 패치됨'
-    balloon_fps_patched_body  = '{0}개 key 패치됨 → {1} FPS'
+    balloon_fps_patched_title    = 'FPS 패치됨'
+    balloon_fps_patched_body     = '{0}개 key 패치됨 → {1} FPS'
+    balloon_fps_unlocked_title   = 'FPS 잠금 해제됨'
+    balloon_fps_unlocked_body    = '{0}: {1} → {2} FPS'
+    balloon_wizard_started_title = 'FPS 마법사 시작'
+    balloon_wizard_started_body  = 'HSR에서 FPS 설정 변경 + ESC로 패널 닫은 후 (게임 닫을 필요 없음), 자동으로 diff + patch를 {0}으로 실행합니다'
+    balloon_wizard_timeout_title = 'FPS 마법사 timeout'
+    balloon_wizard_timeout_body  = '15분 동안 변경 사항이 감지되지 않았습니다'
+    balloon_scan_done_title      = '윈도우 패처'
+    balloon_scan_done_body       = '{0}개 창, {1}개 FPS 설정 패치됨'
+    balloon_guard_stopped_title  = '지속 보호 중지됨'
+    balloon_guard_stopped_body   = 'HSR FPS 변경 사항은 더 이상 덮어쓰이지 않습니다'
+    balloon_guard_started_title  = '지속 보호 활성화됨'
+    balloon_guard_started_body   = 'HSR이 다른 설정을 변경하면 FPS가 자동으로 120으로 재패치됩니다'
+    balloon_app_started_body     = '시작됨 (오른쪽 하단 트레이)'
 
     # === Language switch ===
     lang_restart_title = '언어 전환됨'

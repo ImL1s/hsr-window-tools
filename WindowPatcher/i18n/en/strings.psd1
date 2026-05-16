@@ -25,7 +25,7 @@
 
     # === Wizard ===
     wizard_start_title     = 'FPS Wizard'
-    wizard_start_body      = "The FPS Wizard compares HSR registry content before and after you change a setting.`n`nNext steps:`n  1) Click OK to capture the baseline snapshot`n  2) In HSR: Settings -> Display -> change any option -> press ESC to close the panel`n  3) When an FPS field change is detected, you'll be prompted to patch to 120`n`nNo need to close HSR; takes about 5-30 seconds."
+    wizard_start_body      = "The FPS Wizard compares HSR registry content before and after you change a setting.`n`nNext steps:`n  1) Click OK to capture the baseline snapshot`n  2) In HSR: Settings -> Display -> change any option -> press ESC to close the panel`n  3) When an FPS field change is detected, you'll be prompted to patch to {0}`n`nNo need to close HSR; takes about 5-30 seconds."
     wizard_reg_missing_title = 'Error'
     wizard_reg_missing_body  = 'Registry path not found: {0}'
     wizard_running_title   = 'In progress'
@@ -75,8 +75,21 @@
     activity_wizard_timeout     = 'FPS Wizard: 15-minute timeout; cancelling'
 
     # === Balloon notifications ===
-    balloon_fps_patched_title = 'FPS patched'
-    balloon_fps_patched_body  = 'patched {0} key(s) -> {1} FPS'
+    balloon_fps_patched_title    = 'FPS patched'
+    balloon_fps_patched_body     = 'patched {0} key(s) -> {1} FPS'
+    balloon_fps_unlocked_title   = 'FPS unlocked'
+    balloon_fps_unlocked_body    = '{0}: {1} -> {2} FPS'
+    balloon_wizard_started_title = 'FPS Wizard started'
+    balloon_wizard_started_body  = "After you change FPS in HSR + close the panel with ESC (no need to close the game), I'll automatically diff + patch to {0}"
+    balloon_wizard_timeout_title = 'FPS Wizard timeout'
+    balloon_wizard_timeout_body  = 'No changes detected in 15 minutes'
+    balloon_scan_done_title      = 'WindowPatcher'
+    balloon_scan_done_body       = 'Patched {0} window(s), {1} FPS setting(s)'
+    balloon_guard_stopped_title  = 'Persistent guard stopped'
+    balloon_guard_stopped_body   = 'HSR FPS changes will no longer be overwritten'
+    balloon_guard_started_title  = 'Persistent guard enabled'
+    balloon_guard_started_body   = 'When HSR touches other settings, FPS will be auto-repatched to 120'
+    balloon_app_started_body     = 'Started (tray in the bottom-right corner)'
 
     # === Language switch ===
     lang_restart_title = 'Language switched'
