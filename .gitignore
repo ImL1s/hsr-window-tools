@@ -1,0 +1,43 @@
+# === WindowPatcher 執行時產物 (不該版控) ===
+# config 是使用者個人設定,每台機器不同
+WindowPatcher/config.json
+WindowPatcher/patcher.log
+WindowPatcher/.welcomed
+WindowPatcher/backup-*.bin
+
+# 全域 LOCALAPPDATA 不在這裡,但若有人複製過來忽略掉
+*.log
+*-state.json
+config.json
+
+# === UI 設計過程截圖 (mockup) ===
+# 上次 ralph/autopilot 流程留下的 UI 探索截圖,不該進 repo
+screenshot-*.png
+v6-*.png
+v7-*.png
+*.mockup.png
+
+# === 暫存與 OS 產物 ===
+Thumbs.db
+desktop.ini
+.DS_Store
+*.tmp
+*.bak
+*.swp
+~$*
+
+# === IDE ===
+.vscode/
+.idea/
+*.code-workspace
+
+# === Windows ===
+$RECYCLE.BIN/
+
+# === OMC / OMX / Claude Code 內部 state ===
+.omc/
+.omx/
+.claude/
+AGENTS.md
+*-state.json
+*-replay-*.jsonl
