@@ -42,6 +42,10 @@ Windows PowerShell tooling that makes Honkai: Star Rail and similar Unity game w
 # Start tray mode
 .\WindowPatcher\WindowPatcher.bat
 
+# (Optional) Auto-start on Windows logon
+.\Install-Autostart.bat      # creates HIGHEST scheduled task
+.\Uninstall-Autostart.bat    # removes it
+
 # CLI smoke checks
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\WindowPatcher\WindowPatcher-WPF.ps1 --help
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\WindowPatcher\WindowPatcher-WPF.ps1 --status
@@ -50,6 +54,11 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\WindowPatcher\WindowPatcher-WPF.
 # Legacy one-shot patch for StarRail.exe
 .\APPLY-PATCH.bat
 ```
+
+### Persistence & auto-apply
+- Config (targets, FPS profile, scan interval) is persisted to `%LOCALAPPDATA%\WindowPatcher\config.json` and loaded on every start.
+- The tray app runs a `DispatcherTimer` (default 2s) that detects game processes and automatically applies window style + FPS patches without any manual click.
+- Install-Autostart.bat registers a `onlogon HIGHEST` scheduled task so the tray relaunches itself after every Windows login.
 
 ### FPS note (2026-05 真實測試確認)
 
